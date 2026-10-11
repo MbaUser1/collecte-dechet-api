@@ -34,7 +34,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'1a692cc8236bc18f44eeb93d7cc533330c52577b407763d38f98b3411d5ba9ef'>;
+  StorageHashBase<'e49e0b5f7f662df4d2a4661f6b9a514bd9ed1523d8ad669fd46c1359c1ac40d4'>;
 export type ExecutionHash =
   ExecutionHashBase<'51ce89033a17e75c93f34dd250f5cfccd7026626fe49f1402f7f340da6fc578a'>;
 export type ProfileHash =
@@ -466,6 +466,14 @@ export type FieldOutputTypes = {
       readonly statut: Varchar<30>;
       readonly telephone: Varchar<30> | null;
     };
+    readonly ParticipationCollecteCommunautaire: {
+      readonly date_creation: CodecTypes['pg/timestamptz-temporal@1']['output'];
+      readonly date_modification: CodecTypes['pg/timestamptz-temporal@1']['output'];
+      readonly id: CodecTypes['pg/int8@1']['output'];
+      readonly signalement_id: CodecTypes['pg/int8@1']['output'];
+      readonly statut: 'INSCRIT' | 'CONFIRME' | 'ANNULE';
+      readonly utilisateur_id: CodecTypes['pg/int8@1']['output'];
+    };
     readonly PlanAbonnement: {
       readonly date_creation: CodecTypes['pg/timestamptz-temporal@1']['output'];
       readonly date_modification: CodecTypes['pg/timestamptz-temporal@1']['output'];
@@ -869,6 +877,14 @@ export type FieldInputTypes = {
       readonly statut: CodecTypes['sql/varchar@1']['input'];
       readonly telephone: CodecTypes['sql/varchar@1']['input'] | null;
     };
+    readonly ParticipationCollecteCommunautaire: {
+      readonly date_creation: CodecTypes['pg/timestamptz-temporal@1']['input'];
+      readonly date_modification: CodecTypes['pg/timestamptz-temporal@1']['input'];
+      readonly id: CodecTypes['pg/int8@1']['input'];
+      readonly signalement_id: CodecTypes['pg/int8@1']['input'];
+      readonly statut: 'INSCRIT' | 'CONFIRME' | 'ANNULE';
+      readonly utilisateur_id: CodecTypes['pg/int8@1']['input'];
+    };
     readonly PlanAbonnement: {
       readonly date_creation: CodecTypes['pg/timestamptz-temporal@1']['input'];
       readonly date_modification: CodecTypes['pg/timestamptz-temporal@1']['input'];
@@ -1270,6 +1286,14 @@ export type StorageColumnTypes = {
       readonly site_web: Varchar<255> | null;
       readonly statut: Varchar<30>;
       readonly telephone: Varchar<30> | null;
+    };
+    readonly participations_collectes_communautaires: {
+      readonly date_creation: CodecTypes['pg/timestamptz-temporal@1']['output'];
+      readonly date_modification: CodecTypes['pg/timestamptz-temporal@1']['output'];
+      readonly id: CodecTypes['pg/int8@1']['output'];
+      readonly signalement_id: CodecTypes['pg/int8@1']['output'];
+      readonly statut: 'INSCRIT' | 'CONFIRME' | 'ANNULE';
+      readonly utilisateur_id: CodecTypes['pg/int8@1']['output'];
     };
     readonly plans_abonnement: {
       readonly date_creation: CodecTypes['pg/timestamptz-temporal@1']['output'];
@@ -1673,6 +1697,14 @@ export type StorageColumnInputTypes = {
       readonly site_web: CodecTypes['sql/varchar@1']['input'] | null;
       readonly statut: CodecTypes['sql/varchar@1']['input'];
       readonly telephone: CodecTypes['sql/varchar@1']['input'] | null;
+    };
+    readonly participations_collectes_communautaires: {
+      readonly date_creation: CodecTypes['pg/timestamptz-temporal@1']['input'];
+      readonly date_modification: CodecTypes['pg/timestamptz-temporal@1']['input'];
+      readonly id: CodecTypes['pg/int8@1']['input'];
+      readonly signalement_id: CodecTypes['pg/int8@1']['input'];
+      readonly statut: 'INSCRIT' | 'CONFIRME' | 'ANNULE';
+      readonly utilisateur_id: CodecTypes['pg/int8@1']['input'];
     };
     readonly plans_abonnement: {
       readonly date_creation: CodecTypes['pg/timestamptz-temporal@1']['input'];
@@ -2147,6 +2179,17 @@ export namespace Models {
     recompenses: public_Recompense[];
     readonly [RelationKeys]?: 'recompenses';
   };
+  export type public_ParticipationCollecteCommunautaire = {
+    date_creation: CodecTypes['pg/timestamptz-temporal@1']['output'];
+    date_modification: CodecTypes['pg/timestamptz-temporal@1']['output'];
+    id: CodecTypes['pg/int8@1']['output'];
+    signalement_id: CodecTypes['pg/int8@1']['output'];
+    statut: 'INSCRIT' | 'CONFIRME' | 'ANNULE';
+    utilisateur_id: CodecTypes['pg/int8@1']['output'];
+    signalement: public_Signalement;
+    utilisateur: public_Utilisateur;
+    readonly [RelationKeys]?: 'signalement' | 'utilisateur';
+  };
   export type public_PlanAbonnement = {
     date_creation: CodecTypes['pg/timestamptz-temporal@1']['output'];
     date_modification: CodecTypes['pg/timestamptz-temporal@1']['output'];
@@ -2271,9 +2314,10 @@ export namespace Models {
     validateur_id: CodecTypes['pg/int8@1']['output'] | null;
     ville: Varchar<100>;
     auteur: public_Utilisateur;
+    participations: public_ParticipationCollecteCommunautaire[];
     transactions_points: public_TransactionPoints[];
     validateur: public_Utilisateur | null;
-    readonly [RelationKeys]?: 'auteur' | 'transactions_points' | 'validateur';
+    readonly [RelationKeys]?: 'auteur' | 'participations' | 'transactions_points' | 'validateur';
   };
   export type public_Tarif = {
     date_creation: CodecTypes['pg/timestamptz-temporal@1']['output'];
@@ -2355,6 +2399,7 @@ export namespace Models {
     missions_collecteur: public_MissionCollecte[];
     notifications: public_Notification[];
     paiements: public_Paiement[];
+    participations_communautaires: public_ParticipationCollecteCommunautaire[];
     points_collecte: public_PointCollecte[];
     portefeuille: public_Portefeuille | null;
     preference_notification: public_PreferenceNotification | null;
@@ -2372,6 +2417,7 @@ export namespace Models {
       | 'missions_collecteur'
       | 'notifications'
       | 'paiements'
+      | 'participations_communautaires'
       | 'points_collecte'
       | 'portefeuille'
       | 'preference_notification'
@@ -2425,6 +2471,7 @@ export declare const models: {
     Notification: Models.public_Notification;
     Paiement: Models.public_Paiement;
     Partenaire: Models.public_Partenaire;
+    ParticipationCollecteCommunautaire: Models.public_ParticipationCollecteCommunautaire;
     PlanAbonnement: Models.public_PlanAbonnement;
     PointCollecte: Models.public_PointCollecte;
     Portefeuille: Models.public_Portefeuille;
@@ -4184,6 +4231,104 @@ type ContractBase = Omit<
               ];
               foreignKeys: readonly [];
             };
+            readonly participations_collectes_communautaires: {
+              columns: {
+                readonly date_creation: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
+                  readonly nullable: false;
+                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
+                };
+                readonly date_modification: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
+                  readonly nullable: false;
+                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
+                };
+                readonly id: {
+                  readonly nativeType: 'int8';
+                  readonly codecId: 'pg/int8@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'function';
+                    readonly expression: 'autoincrement()';
+                  };
+                };
+                readonly signalement_id: {
+                  readonly nativeType: 'int8';
+                  readonly codecId: 'pg/int8@1';
+                  readonly nullable: false;
+                };
+                readonly statut: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'INSCRIT'>;
+                  };
+                };
+                readonly utilisateur_id: {
+                  readonly nativeType: 'int8';
+                  readonly codecId: 'pg/int8@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'part_comm_sig_idx_45307c43';
+                  readonly prefix: 'part_comm_sig_idx';
+                  readonly columns: readonly ['signalement_id'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'part_comm_sig_user_unique_5e49cb7f';
+                  readonly prefix: 'part_comm_sig_user_unique';
+                  readonly columns: readonly ['signalement_id', 'utilisateur_id'];
+                  readonly unique: true;
+                },
+                {
+                  readonly name: 'part_comm_statut_idx_9bf78e02';
+                  readonly prefix: 'part_comm_statut_idx';
+                  readonly columns: readonly ['statut'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'part_comm_user_idx_afedb02c';
+                  readonly prefix: 'part_comm_user_idx';
+                  readonly columns: readonly ['utilisateur_id'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'participations_collectes_communautaires';
+                    readonly columns: readonly ['signalement_id'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'signalements';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'participations_collectes_communautaires';
+                    readonly columns: readonly ['utilisateur_id'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'utilisateurs';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+              ];
+            };
             readonly plans_abonnement: {
               columns: {
                 readonly date_creation: {
@@ -5864,6 +6009,10 @@ type ContractBase = Omit<
                 'REMBOURSE_PARTIELLEMENT',
               ];
             };
+            readonly StatutParticipationCollecte: {
+              readonly kind: 'valueSet';
+              readonly values: readonly ['INSCRIT', 'CONFIRME', 'ANNULE'];
+            };
             readonly StatutPortefeuille: {
               readonly kind: 'valueSet';
               readonly values: readonly ['ACTIF', 'SUSPENDU', 'FERME'];
@@ -5956,6 +6105,10 @@ type ContractBase = Omit<
     readonly partenaires: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'Partenaire';
+    };
+    readonly participations_collectes_communautaires: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'ParticipationCollecteCommunautaire';
     };
     readonly plans_abonnement: {
       readonly namespace: 'public' & NamespaceId;
@@ -7835,6 +7988,78 @@ type ContractBase = Omit<
               };
             };
           };
+          readonly ParticipationCollecteCommunautaire: {
+            readonly fields: {
+              readonly date_creation: {
+                readonly nullable: false;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
+                };
+              };
+              readonly date_modification: {
+                readonly nullable: false;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
+                };
+              };
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int8@1' };
+              };
+              readonly signalement_id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int8@1' };
+              };
+              readonly statut: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly utilisateur_id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int8@1' };
+              };
+            };
+            readonly relations: {
+              readonly signalement: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Signalement';
+                };
+                readonly cardinality: 'N:1';
+                readonly nullable: false;
+                readonly on: {
+                  readonly localFields: readonly ['signalement_id'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+              readonly utilisateur: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Utilisateur';
+                };
+                readonly cardinality: 'N:1';
+                readonly nullable: false;
+                readonly on: {
+                  readonly localFields: readonly ['utilisateur_id'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+            };
+            readonly storage: {
+              readonly table: 'participations_collectes_communautaires';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly date_creation: { readonly column: 'date_creation' };
+                readonly date_modification: { readonly column: 'date_modification' };
+                readonly id: { readonly column: 'id' };
+                readonly signalement_id: { readonly column: 'signalement_id' };
+                readonly statut: { readonly column: 'statut' };
+                readonly utilisateur_id: { readonly column: 'utilisateur_id' };
+              };
+            };
+          };
           readonly PlanAbonnement: {
             readonly fields: {
               readonly date_creation: {
@@ -8653,6 +8878,17 @@ type ContractBase = Omit<
                   readonly targetFields: readonly ['id'];
                 };
               };
+              readonly participations: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'ParticipationCollecteCommunautaire';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['signalement_id'];
+                };
+              };
               readonly transactions_points: {
                 readonly to: {
                   readonly namespace: 'public' & NamespaceId;
@@ -9286,6 +9522,17 @@ type ContractBase = Omit<
                   readonly targetFields: readonly ['utilisateur_id'];
                 };
               };
+              readonly participations_communautaires: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'ParticipationCollecteCommunautaire';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['utilisateur_id'];
+                };
+              };
               readonly points_collecte: {
                 readonly to: {
                   readonly namespace: 'public' & NamespaceId;
@@ -9678,6 +9925,14 @@ type ContractBase = Omit<
                 readonly name: 'RemboursePartiellement';
                 readonly value: 'REMBOURSE_PARTIELLEMENT';
               },
+            ];
+          };
+          readonly StatutParticipationCollecte: {
+            readonly codecId: 'pg/text@1';
+            readonly members: readonly [
+              { readonly name: 'Inscrit'; readonly value: 'INSCRIT' },
+              { readonly name: 'Confirme'; readonly value: 'CONFIRME' },
+              { readonly name: 'Annule'; readonly value: 'ANNULE' },
             ];
           };
           readonly StatutPortefeuille: {

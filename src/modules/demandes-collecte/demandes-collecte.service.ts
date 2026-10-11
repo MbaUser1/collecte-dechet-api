@@ -3,7 +3,9 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CalculTarifService } from '../tarifs/services/calcul-tarif.service.js';
 import { TarifsService } from '../tarifs/services/tarifs.service.js';
@@ -174,7 +176,7 @@ export class DemandesCollecteService {
     // 9. Numéro unique de collecte
     const d = new Date();
     const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-    const randStr = Math.random().toString(36).substring(2, 7).toUpperCase();
+    const randStr = randomBytes(3).toString('hex').toUpperCase();
     const numero = `COL-${dateStr}-${randStr}`;
 
     // 10. Exécution transactionnelle de la création et de la réservation
@@ -316,9 +318,21 @@ export class DemandesCollecteService {
     }
 
     const demandeAnnulee = await this.prisma.transaction(async (tx: any) => {
+      const demandeTx = await tx.orm.public.DemandeCollecte
+        .where((d: any) => d.id.eq(id))
+        .first();
+
+      if (!demandeTx || !statutsAnnulables.includes(demandeTx.statut)) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'DEMANDE_NON_ANNULABLE',
+          message: `Cette demande ne peut plus être annulée (statut actuel: ${demandeTx?.statut}).`,
+        });
+      }
+
       // 1. Libération de quota si lié à un abonnement
-      if (demande.abonnement_id) {
-        await this.quotaService.libererQuota(demande.id, tx);
+      if (demandeTx.abonnement_id) {
+        await this.quotaService.libererQuota(demandeTx.id, tx);
       }
 
       // 2. Mise à jour du statut

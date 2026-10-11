@@ -122,6 +122,12 @@ enum StatutReclamationRecompense {
   Annulee = "ANNULEE"
 }
 
+enum StatutParticipationCollecte {
+  Inscrit = "INSCRIT"
+  Confirme = "CONFIRME"
+  Annule = "ANNULE"
+}
+
 model Utilisateur {
   id                          BigInt                  @id @default(autoincrement())
   uuid                        Uuid                    @unique @default(uuid())
@@ -153,6 +159,7 @@ model Utilisateur {
   preference_notification     PreferenceNotification?
   journaux_audit              JournalAudit[]
   sessions                    SessionUtilisateur[]
+  participations_communautaires ParticipationCollecteCommunautaire[]
 
   @@index([role])
   @@index([statut])
@@ -798,6 +805,7 @@ model Signalement {
   )
 
   transactions_points   TransactionPoints[]
+  participations        ParticipationCollecteCommunautaire[]
 
   @@index([utilisateur_id])
   @@index([validateur_id])
@@ -805,6 +813,33 @@ model Signalement {
   @@index([ville])
   @@check(expression: "points_attribues >= 0", name: "signalements_points_positifs")
   @@map("signalements")
+}
+
+model ParticipationCollecteCommunautaire {
+  id                  BigInt                        @id @default(autoincrement())
+  signalement_id      BigInt
+  utilisateur_id      BigInt
+  statut              StatutParticipationCollecte   @default(Inscrit)
+  date_creation       Timestamptz                   @default(now())
+  date_modification   Timestamptz                   @default(now())
+
+  signalement         Signalement                   @relation(
+    fields: [signalement_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  utilisateur         Utilisateur                   @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@index([signalement_id, utilisateur_id], unique: true, name: "part_comm_sig_user_unique")
+  @@index([signalement_id], name: "part_comm_sig_idx")
+  @@index([utilisateur_id], name: "part_comm_user_idx")
+  @@index([statut], name: "part_comm_statut_idx")
+  @@map("participations_collectes_communautaires")
 }
 
 model Partenaire {

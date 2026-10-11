@@ -3,13 +3,21 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { FiltreTransactionsDto } from './dto/filtre-transactions.dto.js';
 import {
   ResultatPagine,
   validerChampTri,
 } from '../../common/dto/pagination-query.dto.js';
+
+function genererReferenceTransaction(prefix: string): string {
+  const ts = Date.now().toString(36).toUpperCase();
+  const alea = randomBytes(4).toString('hex').toUpperCase();
+  return `${prefix}-${ts}-${alea}`;
+}
 
 @Injectable()
 export class PortefeuilleService {
@@ -115,8 +123,7 @@ export class PortefeuilleService {
       const soldeApres = Math.round((soldeActuel + montant) * 100) / 100;
 
       const refTransaction =
-        reference ||
-        `TX-CR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        reference || genererReferenceTransaction('TX-CR');
 
       // 1. Enregistrement de la trace de transaction
       const transaction = await tx.orm.public.TransactionPortefeuille.create({
@@ -128,13 +135,21 @@ export class PortefeuilleService {
         solde_apres: soldeApres.toString() as any,
       });
 
-      // 2. Mise à jour du solde
+      // 2. Mise à jour atomique conditionnelle du solde
       const portefeuilleMisAJour = await tx.orm.public.Portefeuille
-        .where((p: any) => p.id.eq(portefeuilleId))
+        .where((p: any) => p.id.eq(portefeuilleId).and(p.solde.eq(portefeuille.solde)))
         .update({
           solde: soldeApres.toString() as any,
           date_modification: new Date(),
         } as any);
+
+      if (!portefeuilleMisAJour) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'CONCURRENCE_PORTEFEUILLE',
+          message: 'Le solde du portefeuille a été modifié simultanément par une autre opération. Veuillez réessayer.',
+        });
+      }
 
       return {
         transaction,
@@ -195,8 +210,7 @@ export class PortefeuilleService {
       const soldeApres = Math.round((soldeActuel - montant) * 100) / 100;
 
       const refTransaction =
-        reference ||
-        `TX-DB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        reference || genererReferenceTransaction('TX-DB');
 
       // 1. Enregistrement de la trace de transaction
       const transaction = await tx.orm.public.TransactionPortefeuille.create({
@@ -208,13 +222,21 @@ export class PortefeuilleService {
         solde_apres: soldeApres.toString() as any,
       });
 
-      // 2. Mise à jour du solde
+      // 2. Mise à jour atomique conditionnelle du solde (protection contre les modifications concurrentes)
       const portefeuilleMisAJour = await tx.orm.public.Portefeuille
-        .where((p: any) => p.id.eq(portefeuilleId))
+        .where((p: any) => p.id.eq(portefeuilleId).and(p.solde.eq(portefeuille.solde)))
         .update({
           solde: soldeApres.toString() as any,
           date_modification: new Date(),
         } as any);
+
+      if (!portefeuilleMisAJour) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'CONCURRENCE_PORTEFEUILLE',
+          message: 'Le solde du portefeuille a été modifié simultanément par une autre opération. Veuillez réessayer.',
+        });
+      }
 
       return {
         transaction,

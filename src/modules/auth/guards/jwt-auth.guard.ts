@@ -55,6 +55,10 @@ export class JwtAuthGuard implements CanActivate {
       throw new ForbiddenException('Votre compte est actuellement inactif.');
     }
 
+    if (utilisateur.statut !== 'ACTIF') {
+      throw new ForbiddenException('Votre compte n\'est pas actif.');
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { mot_de_passe: _, ...utilisateurSansSecret } = utilisateur;
     request.utilisateur = utilisateurSansSecret;

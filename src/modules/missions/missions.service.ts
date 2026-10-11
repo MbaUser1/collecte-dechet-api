@@ -139,9 +139,13 @@ export class MissionsService {
 
       const maintenant = new Date();
 
-      // 1. Attribution de la demande
+      // 1. Attribution atomique conditionnelle de la demande (réservation exclusive)
       const demandeMaj = await tx.orm.public.DemandeCollecte
-        .where((d: any) => d.id.eq(demandeId))
+        .where((d: any) =>
+          d.id.eq(demandeId)
+            .and(d.statut.eq('EN_ATTENTE_ATTRIBUTION'))
+            .and(d.collecteur_id.isNull()),
+        )
         .update({
           collecteur_id: collecteur.id as any,
           statut: 'ATTRIBUEE',
@@ -149,14 +153,34 @@ export class MissionsService {
           date_modification: maintenant,
         } as any);
 
-      // 2. Création de la mission opérationnelle
-      const mission = await tx.orm.public.MissionCollecte.create({
-        demande_collecte_id: demandeId as any,
-        collecteur_id: collecteur.id as any,
-        statut: 'ATTRIBUEE' as any,
-        date_attribution: maintenant as any,
-        date_acceptation: maintenant as any,
-      });
+      if (!demandeMaj) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'COLLECTE_DEJA_ATTRIBUEE',
+          message: 'Cette collecte a déjà été acceptée ou n’est plus disponible.',
+        });
+      }
+
+      // 2. Création de la mission opérationnelle (protégée par contrainte UNIQUE sur demande_collecte_id)
+      let mission: any;
+      try {
+        mission = await tx.orm.public.MissionCollecte.create({
+          demande_collecte_id: demandeId as any,
+          collecteur_id: collecteur.id as any,
+          statut: 'ATTRIBUEE' as any,
+          date_attribution: maintenant as any,
+          date_acceptation: maintenant as any,
+        });
+      } catch (err: any) {
+        if (err?.code === 'P2002' || err?.message?.includes('unique') || err?.message?.includes('Unique')) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: 'COLLECTE_DEJA_ATTRIBUEE',
+            message: 'Cette collecte a déjà été acceptée ou n’est plus disponible.',
+          });
+        }
+        throw err;
+      }
 
       return {
         succes: true,

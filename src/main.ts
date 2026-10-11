@@ -22,7 +22,14 @@ async function bootstrap() {
     }),
   );
 
-  app.enableCors();
+  const corsOrigines = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+    : true;
+
+  app.enableCors({
+    origin: corsOrigines,
+    credentials: true,
+  });
 
   await app.listen(process.env.PORT ?? 3000);
 }

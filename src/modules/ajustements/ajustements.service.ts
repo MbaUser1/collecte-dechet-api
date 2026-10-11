@@ -3,9 +3,17 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { PortefeuilleService } from '../portefeuille/portefeuille.service.js';
+
+function genererReferenceAjustement(prefix: string): string {
+  const ts = Date.now().toString(36).toUpperCase();
+  const alea = randomBytes(4).toString('hex').toUpperCase();
+  return `${prefix}-${ts}-${alea}`;
+}
 
 @Injectable()
 export class AjustementsService {
@@ -71,7 +79,82 @@ export class AjustementsService {
         throw new NotFoundException('Demande de collecte introuvable.');
       }
 
-      // 1. Récupérer le portefeuille de l'utilisateur ou entreprise
+      // 1. Vérifier si un paiement d'origine est spécifié et n'est pas déjà totalement remboursé
+      let paiementOrigine: any = null;
+      let nouveauStatutPaiement: string | null = null;
+      if (paiementOrigineId) {
+        paiementOrigine = await tx.orm.public.Paiement
+          .where((p: any) => p.id.eq(paiementOrigineId))
+          .first();
+
+        if (!paiementOrigine) {
+          throw new NotFoundException('Paiement d’origine introuvable.');
+        }
+
+        if (paiementOrigine.statut === 'REMBOURSE') {
+          throw new ConflictException({
+            statusCode: 409,
+            code: 'PAIEMENT_DEJA_REMBOURSE',
+            message: 'Ce paiement a déjà été intégralement remboursé.',
+          });
+        }
+
+        // Calculer le total déjà remboursé sur ce paiement
+        const remboursementsPrecedents = await tx.orm.public.AjustementPrix
+          .where((a: any) => a.paiement_id.eq(paiementOrigine.id).and(a.sens.eq('CREDIT')).and(a.statut.eq('REGLE')))
+          .all();
+
+        const dejaRembourse = remboursementsPrecedents.reduce(
+          (sum: number, a: any) => sum + Number(a.montant),
+          0,
+        );
+
+        const montantPaiement = Number(paiementOrigine.montant);
+        const restantRemboursable = Math.max(0, Math.round((montantPaiement - dejaRembourse) * 100) / 100);
+
+        if (montant > restantRemboursable) {
+          throw new BadRequestException({
+            statusCode: 400,
+            code: 'MONTANT_REMBOURSEMENT_EXCESSIF',
+            message: `Le montant demandé (${montant} FCFA) dépasse le solde remboursable restant (${restantRemboursable} FCFA) pour ce paiement.`,
+          });
+        }
+
+        const totalApres = dejaRembourse + montant;
+        nouveauStatutPaiement = totalApres >= montantPaiement ? 'REMBOURSE' : 'REMBOURSE_PARTIELLEMENT';
+
+        // VERROUILLAGE CONCURRENTIEL ET OCC SUR LE PAIEMENT AVANT TOUTE TRANSACTION FINANCIÈRE :
+        // La mise à jour conditionnelle verrouille la ligne du paiement dans PostgreSQL et valide que
+        // le statut et la date_modification n'ont pas changé.
+        // Si deux opérations concurrentes tentent un remboursement simultané :
+        // - L'opération 1 acquiert le verrou exclusif sur la ligne et met à jour statut et date_modification.
+        // - L'opération 2 est mise en attente du verrou.
+        // - Dès le commit de l'opération 1, l'opération 2 réévalue son WHERE : date_modification (et statut)
+        //   ayant changé, 0 ligne n'est affectée.
+        // - L'opération 2 lève immédiatement ConflictException sans créditer le portefeuille ni créer d'ajustement.
+        const paiementMaj = await tx.orm.public.Paiement
+          .where((p: any) => {
+            let predicate = p.id.eq(paiementOrigineId).and(p.statut.eq(paiementOrigine.statut));
+            if (paiementOrigine.date_modification) {
+              predicate = predicate.and(p.date_modification.eq(paiementOrigine.date_modification));
+            }
+            return predicate;
+          })
+          .update({
+            statut: nouveauStatutPaiement as any,
+            date_modification: new Date(),
+          } as any);
+
+        if (!paiementMaj) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: 'CONCURRENCE_REMBOURSEMENT',
+            message: 'Ce paiement a été modifié concurremment par une autre opération.',
+          });
+        }
+      }
+
+      // 2. Récupérer le portefeuille de l'utilisateur ou entreprise
       const portefeuille = demande.entreprise_id
         ? await tx.orm.public.Portefeuille.where((p: any) => p.entreprise_id.eq(demande.entreprise_id)).first()
         : await tx.orm.public.Portefeuille.where((p: any) => p.utilisateur_id.eq(demande.utilisateur_id)).first();
@@ -80,8 +163,8 @@ export class AjustementsService {
         throw new NotFoundException('Portefeuille destinataire du remboursement introuvable.');
       }
 
-      // 2. Créditer le portefeuille
-      const refCr = `REMB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      // 3. Créditer le portefeuille
+      const refCr = genererReferenceAjustement('REMB');
       await this.portefeuilleService.crediter(
         portefeuille.id,
         montant,
@@ -90,7 +173,7 @@ export class AjustementsService {
         tx,
       );
 
-      // 3. Enregistrer l'ajustement
+      // 4. Enregistrer l'ajustement
       const dateReglement = new Date();
       const ajustement = await tx.orm.public.AjustementPrix.create({
         demande_collecte_id: demandeId as any,
@@ -101,24 +184,6 @@ export class AjustementsService {
         statut: 'REGLE' as any,
         date_reglement: dateReglement as any,
       });
-
-      // 4. Mettre à jour le statut du paiement d'origine si applicable
-      if (paiementOrigineId) {
-        const paiementOrigine = await tx.orm.public.Paiement
-          .where((p: any) => p.id.eq(paiementOrigineId))
-          .first();
-
-        if (paiementOrigine) {
-          const montantPaiement = Number(paiementOrigine.montant);
-          const nouveauStatut = montant >= montantPaiement ? 'REMBOURSE' : 'REMBOURSE_PARTIELLEMENT';
-          await tx.orm.public.Paiement
-            .where((p: any) => p.id.eq(paiementOrigineId))
-            .update({
-              statut: nouveauStatut as any,
-              date_modification: new Date(),
-            } as any);
-        }
-      }
 
       return ajustement;
     };
@@ -240,7 +305,7 @@ export class AjustementsService {
       // 2. Enregistrer le paiement
       const datePaiement = new Date();
       const paiement = await tx.orm.public.Paiement.create({
-        reference: `PAY-AJUST-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}` as any,
+        reference: genererReferenceAjustement('PAY-AJUST') as any,
         utilisateur_id: utilisateur.id as any,
         demande_collecte_id: demande.id as any,
         montant: montantAjustement.toString() as any,

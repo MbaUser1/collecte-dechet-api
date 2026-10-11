@@ -49,6 +49,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     }
 
+    // Assainissement strict en environnement de production
+    if (process.env.NODE_ENV === 'production') {
+      if (status >= 500) {
+        message = 'Une erreur interne est survenue.';
+        data = {};
+      } else if (typeof message === 'string') {
+        if (
+          message.includes('postgres://') ||
+          message.includes('postgresql://') ||
+          message.includes('password=') ||
+          message.includes('Bearer ')
+        ) {
+          message = 'Une erreur est survenue lors du traitement de la requête.';
+        }
+      }
+    }
+
     response.status(status).json({
       success: false,
       message,

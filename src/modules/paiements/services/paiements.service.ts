@@ -4,7 +4,9 @@ import {
   ForbiddenException,
   BadRequestException,
   UnauthorizedException,
+  ConflictException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../../prisma/prisma.service.js';
 import { PortefeuilleService } from '../../portefeuille/portefeuille.service.js';
 import { IdempotenceService } from './idempotence.service.js';
@@ -19,6 +21,12 @@ import {
   ResultatPagine,
   validerChampTri,
 } from '../../../common/dto/pagination-query.dto.js';
+
+function genererReferencePaiement(prefix: string): string {
+  const ts = Date.now().toString(36).toUpperCase();
+  const alea = randomBytes(4).toString('hex').toUpperCase();
+  return `${prefix}-${ts}-${alea}`;
+}
 
 @Injectable()
 export class PaiementsService {
@@ -44,131 +52,148 @@ export class PaiementsService {
         'POST',
         '/paiements/collecte',
         dto,
+        utilisateur.id,
       );
       if (idem.estExistant) {
         return idem.reponse;
       }
     }
 
-    const demandeId = BigInt(dto.demande_id);
-    const demande = await this.prisma.orm.public.DemandeCollecte
-      .where((d: any) => d.id.eq(demandeId))
-      .first();
-
-    if (!demande) {
-      throw new NotFoundException('Demande de collecte introuvable.');
-    }
-
-    // Contrôle propriétaire
-    if (utilisateur.role === 'ENTREPRISE') {
-      const entreprise = await this.prisma.orm.public.Entreprise
-        .where((e: any) => e.utilisateur_id.eq(utilisateur.id))
+    try {
+      const demandeId = BigInt(dto.demande_id);
+      const demande = await this.prisma.orm.public.DemandeCollecte
+        .where((d: any) => d.id.eq(demandeId))
         .first();
 
-      if (!demande.entreprise_id || demande.entreprise_id !== entreprise?.id) {
+      if (!demande) {
+        throw new NotFoundException('Demande de collecte introuvable.');
+      }
+
+      // Contrôle propriétaire
+      if (utilisateur.role === 'ENTREPRISE') {
+        const entreprise = await this.prisma.orm.public.Entreprise
+          .where((e: any) => e.utilisateur_id.eq(utilisateur.id))
+          .first();
+
+        if (!demande.entreprise_id || demande.entreprise_id !== entreprise?.id) {
+          throw new ForbiddenException('Accès refusé à cette demande de collecte.');
+        }
+      } else if (utilisateur.role !== 'ADMINISTRATEUR' && demande.utilisateur_id !== utilisateur.id) {
         throw new ForbiddenException('Accès refusé à cette demande de collecte.');
       }
-    } else if (utilisateur.role !== 'ADMINISTRATEUR' && demande.utilisateur_id !== utilisateur.id) {
-      throw new ForbiddenException('Accès refusé à cette demande de collecte.');
-    }
 
-    if (demande.statut !== 'EN_ATTENTE_PAIEMENT') {
-      throw new BadRequestException(
-        `La demande de collecte n'est pas en attente de paiement (statut actuel: ${demande.statut}).`,
-      );
-    }
-
-    const montant = Number(demande.prix_estime);
-    const ref = `PAY-COL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-    let reponseFinale: any;
-
-    if (dto.methode === 'PORTEFEUILLE') {
-      reponseFinale = await this.prisma.transaction(async (tx: any) => {
-        const portefeuille = await this.portefeuilleService.obtenirPortefeuillePourProprietaire(
-          utilisateur,
-          tx,
+      if (demande.statut !== 'EN_ATTENTE_PAIEMENT') {
+        throw new BadRequestException(
+          `La demande de collecte n'est pas en attente de paiement (statut actuel: ${demande.statut}).`,
         );
+      }
 
-        // Débit atomique
-        await this.portefeuilleService.debiter(
-          portefeuille.id,
+      const montant = Number(demande.prix_estime);
+      const ref = genererReferencePaiement('PAY-COL');
+
+      let reponseFinale: any;
+
+      if (dto.methode === 'PORTEFEUILLE') {
+        reponseFinale = await this.prisma.transaction(async (tx: any) => {
+          const portefeuille = await this.portefeuilleService.obtenirPortefeuillePourProprietaire(
+            utilisateur,
+            tx,
+          );
+
+          // Débit atomique
+          await this.portefeuilleService.debiter(
+            portefeuille.id,
+            montant,
+            `Règlement collecte #${demande.numero}`,
+            ref,
+            tx,
+          );
+
+          const datePaiement = new Date();
+          const paiement = await tx.orm.public.Paiement.create({
+            reference: ref as any,
+            utilisateur_id: utilisateur.id as any,
+            demande_collecte_id: demande.id as any,
+            montant: montant.toString() as any,
+            devise: 'XAF' as any,
+            methode: 'PORTEFEUILLE' as any,
+            type: 'COLLECTE' as any,
+            statut: 'PAYE' as any,
+            date_paiement: datePaiement as any,
+          });
+
+          const demandeMaj = await tx.orm.public.DemandeCollecte
+            .where((d: any) => d.id.eq(demande.id))
+            .update({
+              statut: 'PAYEE',
+              date_modification: datePaiement,
+            } as any);
+
+          return {
+            succes: true,
+            paiement,
+            demande: demandeMaj,
+            message: 'Collecte réglée avec succès depuis votre portefeuille.',
+          };
+        });
+      } else {
+        // Initiation fournisseur externe
+        const initiation = await this.fournisseurPaiement.initierPaiement({
+          reference: ref,
           montant,
-          `Règlement collecte #${demande.numero}`,
-          ref,
-          tx,
-        );
+          devise: 'XAF',
+          telephone: dto.telephone_payeur,
+          description: `Paiement collecte #${demande.numero}`,
+        });
 
-        const datePaiement = new Date();
-        const paiement = await tx.orm.public.Paiement.create({
+        const paiement = await this.prisma.orm.public.Paiement.create({
           reference: ref as any,
           utilisateur_id: utilisateur.id as any,
           demande_collecte_id: demande.id as any,
           montant: montant.toString() as any,
           devise: 'XAF' as any,
-          methode: 'PORTEFEUILLE' as any,
+          methode: dto.methode as any,
           type: 'COLLECTE' as any,
-          statut: 'PAYE' as any,
-          date_paiement: datePaiement as any,
+          statut: initiation.statut_initial as any,
+          reference_fournisseur: initiation.reference_fournisseur as any,
+          donnees_fournisseur: JSON.stringify(initiation.donnees) as any,
         });
 
-        const demandeMaj = await tx.orm.public.DemandeCollecte
-          .where((d: any) => d.id.eq(demande.id))
-          .update({
-            statut: 'PAYEE',
-            date_modification: datePaiement,
-          } as any);
-
-        return {
+        reponseFinale = {
           succes: true,
           paiement,
-          demande: demandeMaj,
-          message: 'Collecte réglée avec succès depuis votre portefeuille.',
+          url_paiement: initiation.url_paiement,
+          message: 'Paiement initié. En attente de confirmation du fournisseur.',
         };
-      });
-    } else {
-      // Initiation fournisseur externe
-      const initiation = await this.fournisseurPaiement.initierPaiement({
-        reference: ref,
-        montant,
-        devise: 'XAF',
-        telephone: dto.telephone_payeur,
-        description: `Paiement collecte #${demande.numero}`,
-      });
+      }
 
-      const paiement = await this.prisma.orm.public.Paiement.create({
-        reference: ref as any,
-        utilisateur_id: utilisateur.id as any,
-        demande_collecte_id: demande.id as any,
-        montant: montant.toString() as any,
-        devise: 'XAF' as any,
-        methode: dto.methode as any,
-        type: 'COLLECTE' as any,
-        statut: initiation.statut_initial as any,
-        reference_fournisseur: initiation.reference_fournisseur as any,
-        donnees_fournisseur: JSON.stringify(initiation.donnees) as any,
-      });
+      if (cleIdempotence) {
+        await this.idempotenceService.enregistrer(
+          cleIdempotence,
+          'POST',
+          '/paiements/collecte',
+          dto,
+          200,
+          reponseFinale,
+          utilisateur.id,
+        );
+      }
 
-      reponseFinale = {
-        succes: true,
-        paiement,
-        url_paiement: initiation.url_paiement,
-        message: 'Paiement initié. En attente de confirmation du fournisseur.',
-      };
+      return reponseFinale;
+    } catch (err) {
+      if (
+        cleIdempotence &&
+        !(err instanceof ConflictException && (err.getResponse() as any)?.code?.startsWith('IDEMPOTENCY_')) &&
+        !(err instanceof ConflictException && (err.getResponse() as any)?.code === 'OPERATION_EN_COURS')
+      ) {
+        await this.idempotenceService.marquerEchec(
+          cleIdempotence,
+          (err as any)?.status || 500,
+          (err as any)?.message,
+        );
+      }
+      throw err;
     }
-
-    if (cleIdempotence) {
-      await this.idempotenceService.enregistrer(
-        cleIdempotence,
-        'POST',
-        '/paiements/collecte',
-        dto,
-        200,
-        reponseFinale,
-      );
-    }
-
-    return reponseFinale;
   }
 
   /**
@@ -185,118 +210,135 @@ export class PaiementsService {
         'POST',
         '/paiements/abonnement',
         dto,
+        utilisateur.id,
       );
       if (idem.estExistant) {
         return idem.reponse;
       }
     }
 
-    const abonnementId = BigInt(dto.abonnement_id);
-    const abonnement = await this.prisma.orm.public.Abonnement
-      .where((a: any) => a.id.eq(abonnementId))
-      .first();
+    try {
+      const abonnementId = BigInt(dto.abonnement_id);
+      const abonnement = await this.prisma.orm.public.Abonnement
+        .where((a: any) => a.id.eq(abonnementId))
+        .first();
 
-    if (!abonnement) {
-      throw new NotFoundException('Abonnement introuvable.');
-    }
+      if (!abonnement) {
+        throw new NotFoundException('Abonnement introuvable.');
+      }
 
-    if (utilisateur.role !== 'ADMINISTRATEUR' && abonnement.utilisateur_id !== utilisateur.id) {
-      throw new ForbiddenException('Accès refusé à cet abonnement.');
-    }
+      if (utilisateur.role !== 'ADMINISTRATEUR' && abonnement.utilisateur_id !== utilisateur.id) {
+        throw new ForbiddenException('Accès refusé à cet abonnement.');
+      }
 
-    if (abonnement.statut !== 'EN_ATTENTE_PAIEMENT') {
-      throw new BadRequestException(
-        `L’abonnement n'est pas en attente de paiement (statut actuel: ${abonnement.statut}).`,
-      );
-    }
-
-    const montant = Number(abonnement.prix);
-    const ref = `PAY-ABO-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-    let reponseFinale: any;
-
-    if (dto.methode === 'PORTEFEUILLE') {
-      reponseFinale = await this.prisma.transaction(async (tx: any) => {
-        const portefeuille = await this.portefeuilleService.obtenirPortefeuillePourProprietaire(
-          utilisateur,
-          tx,
+      if (abonnement.statut !== 'EN_ATTENTE_PAIEMENT') {
+        throw new BadRequestException(
+          `L’abonnement n'est pas en attente de paiement (statut actuel: ${abonnement.statut}).`,
         );
+      }
 
-        await this.portefeuilleService.debiter(
-          portefeuille.id,
+      const montant = Number(abonnement.prix);
+      const ref = genererReferencePaiement('PAY-ABO');
+
+      let reponseFinale: any;
+
+      if (dto.methode === 'PORTEFEUILLE') {
+        reponseFinale = await this.prisma.transaction(async (tx: any) => {
+          const portefeuille = await this.portefeuilleService.obtenirPortefeuillePourProprietaire(
+            utilisateur,
+            tx,
+          );
+
+          await this.portefeuilleService.debiter(
+            portefeuille.id,
+            montant,
+            `Paiement abonnement #${abonnement.id}`,
+            ref,
+            tx,
+          );
+
+          const datePaiement = new Date();
+          const paiement = await tx.orm.public.Paiement.create({
+            reference: ref as any,
+            utilisateur_id: utilisateur.id as any,
+            abonnement_id: abonnement.id as any,
+            montant: montant.toString() as any,
+            devise: 'XAF' as any,
+            methode: 'PORTEFEUILLE' as any,
+            type: 'ABONNEMENT' as any,
+            statut: 'PAYE' as any,
+            date_paiement: datePaiement as any,
+          });
+
+          const abonnementActive = await this.abonnementsService.activerAbonnementApresPaiement(
+            abonnement.id,
+            tx,
+          );
+
+          return {
+            succes: true,
+            paiement,
+            abonnement: abonnementActive,
+            message: 'Abonnement réglé et activé avec succès depuis votre portefeuille.',
+          };
+        });
+      } else {
+        const initiation = await this.fournisseurPaiement.initierPaiement({
+          reference: ref,
           montant,
-          `Paiement abonnement #${abonnement.id}`,
-          ref,
-          tx,
-        );
+          devise: 'XAF',
+          telephone: dto.telephone_payeur,
+          description: `Paiement abonnement #${abonnement.id}`,
+        });
 
-        const datePaiement = new Date();
-        const paiement = await tx.orm.public.Paiement.create({
+        const paiement = await this.prisma.orm.public.Paiement.create({
           reference: ref as any,
           utilisateur_id: utilisateur.id as any,
           abonnement_id: abonnement.id as any,
           montant: montant.toString() as any,
           devise: 'XAF' as any,
-          methode: 'PORTEFEUILLE' as any,
+          methode: dto.methode as any,
           type: 'ABONNEMENT' as any,
-          statut: 'PAYE' as any,
-          date_paiement: datePaiement as any,
+          statut: initiation.statut_initial as any,
+          reference_fournisseur: initiation.reference_fournisseur as any,
+          donnees_fournisseur: JSON.stringify(initiation.donnees) as any,
         });
 
-        const abonnementActive = await this.abonnementsService.activerAbonnementApresPaiement(
-          abonnement.id,
-          tx,
-        );
-
-        return {
+        reponseFinale = {
           succes: true,
           paiement,
-          abonnement: abonnementActive,
-          message: 'Abonnement réglé et activé avec succès depuis votre portefeuille.',
+          url_paiement: initiation.url_paiement,
+          message: 'Paiement d’abonnement initié. En attente de confirmation.',
         };
-      });
-    } else {
-      const initiation = await this.fournisseurPaiement.initierPaiement({
-        reference: ref,
-        montant,
-        devise: 'XAF',
-        telephone: dto.telephone_payeur,
-        description: `Paiement abonnement #${abonnement.id}`,
-      });
+      }
 
-      const paiement = await this.prisma.orm.public.Paiement.create({
-        reference: ref as any,
-        utilisateur_id: utilisateur.id as any,
-        abonnement_id: abonnement.id as any,
-        montant: montant.toString() as any,
-        devise: 'XAF' as any,
-        methode: dto.methode as any,
-        type: 'ABONNEMENT' as any,
-        statut: initiation.statut_initial as any,
-        reference_fournisseur: initiation.reference_fournisseur as any,
-        donnees_fournisseur: JSON.stringify(initiation.donnees) as any,
-      });
+      if (cleIdempotence) {
+        await this.idempotenceService.enregistrer(
+          cleIdempotence,
+          'POST',
+          '/paiements/abonnement',
+          dto,
+          200,
+          reponseFinale,
+          utilisateur.id,
+        );
+      }
 
-      reponseFinale = {
-        succes: true,
-        paiement,
-        url_paiement: initiation.url_paiement,
-        message: 'Paiement d’abonnement initié. En attente de confirmation.',
-      };
+      return reponseFinale;
+    } catch (err) {
+      if (
+        cleIdempotence &&
+        !(err instanceof ConflictException && (err.getResponse() as any)?.code?.startsWith('IDEMPOTENCY_')) &&
+        !(err instanceof ConflictException && (err.getResponse() as any)?.code === 'OPERATION_EN_COURS')
+      ) {
+        await this.idempotenceService.marquerEchec(
+          cleIdempotence,
+          (err as any)?.status || 500,
+          (err as any)?.message,
+        );
+      }
+      throw err;
     }
-
-    if (cleIdempotence) {
-      await this.idempotenceService.enregistrer(
-        cleIdempotence,
-        'POST',
-        '/paiements/abonnement',
-        dto,
-        200,
-        reponseFinale,
-      );
-    }
-
-    return reponseFinale;
   }
 
   /**
@@ -313,57 +355,74 @@ export class PaiementsService {
         'POST',
         '/paiements/rechargement-portefeuille',
         dto,
+        utilisateur.id,
       );
       if (idem.estExistant) {
         return idem.reponse;
       }
     }
 
-    if ((dto.methode as string) === 'PORTEFEUILLE') {
-      throw new BadRequestException('Impossible de recharger un portefeuille avec le portefeuille.');
+    try {
+      if ((dto.methode as string) === 'PORTEFEUILLE') {
+        throw new BadRequestException('Impossible de recharger un portefeuille avec le portefeuille.');
+      }
+
+      const ref = genererReferencePaiement('PAY-RECH');
+
+      const initiation = await this.fournisseurPaiement.initierPaiement({
+        reference: ref,
+        montant: dto.montant,
+        devise: 'XAF',
+        telephone: dto.telephone_payeur,
+        description: 'Rechargement de portefeuille',
+      });
+
+      const paiement = await this.prisma.orm.public.Paiement.create({
+        reference: ref as any,
+        utilisateur_id: utilisateur.id as any,
+        montant: dto.montant.toString() as any,
+        devise: 'XAF' as any,
+        methode: dto.methode as any,
+        type: 'RECHARGEMENT_PORTEFEUILLE' as any,
+        statut: initiation.statut_initial as any,
+        reference_fournisseur: initiation.reference_fournisseur as any,
+        donnees_fournisseur: JSON.stringify(initiation.donnees) as any,
+      });
+
+      const reponseFinale = {
+        succes: true,
+        paiement,
+        url_paiement: initiation.url_paiement,
+        message: 'Intention de recharge créée. Le portefeuille sera crédité après confirmation.',
+      };
+
+      if (cleIdempotence) {
+        await this.idempotenceService.enregistrer(
+          cleIdempotence,
+          'POST',
+          '/paiements/rechargement-portefeuille',
+          dto,
+          200,
+          reponseFinale,
+          utilisateur.id,
+        );
+      }
+
+      return reponseFinale;
+    } catch (err) {
+      if (
+        cleIdempotence &&
+        !(err instanceof ConflictException && (err.getResponse() as any)?.code?.startsWith('IDEMPOTENCY_')) &&
+        !(err instanceof ConflictException && (err.getResponse() as any)?.code === 'OPERATION_EN_COURS')
+      ) {
+        await this.idempotenceService.marquerEchec(
+          cleIdempotence,
+          (err as any)?.status || 500,
+          (err as any)?.message,
+        );
+      }
+      throw err;
     }
-
-    const ref = `PAY-RECH-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-    const initiation = await this.fournisseurPaiement.initierPaiement({
-      reference: ref,
-      montant: dto.montant,
-      devise: 'XAF',
-      telephone: dto.telephone_payeur,
-      description: 'Rechargement de portefeuille',
-    });
-
-    const paiement = await this.prisma.orm.public.Paiement.create({
-      reference: ref as any,
-      utilisateur_id: utilisateur.id as any,
-      montant: dto.montant.toString() as any,
-      devise: 'XAF' as any,
-      methode: dto.methode as any,
-      type: 'RECHARGEMENT_PORTEFEUILLE' as any,
-      statut: initiation.statut_initial as any,
-      reference_fournisseur: initiation.reference_fournisseur as any,
-      donnees_fournisseur: JSON.stringify(initiation.donnees) as any,
-    });
-
-    const reponseFinale = {
-      succes: true,
-      paiement,
-      url_paiement: initiation.url_paiement,
-      message: 'Intention de recharge créée. Le portefeuille sera crédité après confirmation.',
-    };
-
-    if (cleIdempotence) {
-      await this.idempotenceService.enregistrer(
-        cleIdempotence,
-        'POST',
-        '/paiements/rechargement-portefeuille',
-        dto,
-        200,
-        reponseFinale,
-      );
-    }
-
-    return reponseFinale;
   }
 
   /**
@@ -380,150 +439,189 @@ export class PaiementsService {
         'POST',
         '/paiements/facture',
         dto,
+        utilisateur.id,
       );
       if (idem.estExistant) {
         return idem.reponse;
       }
     }
 
-    const factureId = BigInt(dto.facture_id);
-    const facture = await this.prisma.orm.public.Facture
-      .where((f: any) => f.id.eq(factureId))
-      .first();
-
-    if (!facture) {
-      throw new NotFoundException('Facture introuvable.');
-    }
-
-    // Vérifier l'entreprise
-    if (utilisateur.role !== 'ADMINISTRATEUR') {
-      const entreprise = await this.prisma.orm.public.Entreprise
-        .where((e: any) => e.utilisateur_id.eq(utilisateur.id))
+    try {
+      const factureId = BigInt(dto.facture_id);
+      const facture = await this.prisma.orm.public.Facture
+        .where((f: any) => f.id.eq(factureId))
         .first();
 
-      if (!entreprise || facture.entreprise_id !== entreprise.id) {
-        throw new ForbiddenException('Accès refusé à cette facture.');
+      if (!facture) {
+        throw new NotFoundException('Facture introuvable.');
       }
-    }
 
-    if (facture.statut === 'PAYEE' || facture.statut === 'ANNULEE') {
-      throw new BadRequestException(
-        `Cette facture ne peut pas être payée (statut actuel: ${facture.statut}).`,
-      );
-    }
+      // Vérifier l'entreprise
+      if (utilisateur.role !== 'ADMINISTRATEUR') {
+        const entreprise = await this.prisma.orm.public.Entreprise
+          .where((e: any) => e.utilisateur_id.eq(utilisateur.id))
+          .first();
 
-    // Calcul du solde restant
-    const paiementsExistants = await this.prisma.orm.public.Paiement
-      .where((p: any) => p.facture_id.eq(facture.id))
-      .where((p: any) => p.statut.eq('PAYE'))
-      .all();
+        if (!entreprise || facture.entreprise_id !== entreprise.id) {
+          throw new ForbiddenException('Accès refusé à cette facture.');
+        }
+      }
 
-    const dejaPaye = paiementsExistants.reduce(
-      (sum: number, p: any) => sum + Number(p.montant),
-      0,
-    );
-    const restantDu = Number(facture.montant_ttc) - dejaPaye;
-
-    const montantAPayer = dto.montant || restantDu;
-
-    if (montantAPayer > restantDu) {
-      throw new BadRequestException(
-        `Le montant spécifié (${montantAPayer} FCFA) dépasse le solde restant dû (${restantDu} FCFA).`,
-      );
-    }
-
-    const ref = `PAY-FACT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-    let reponseFinale: any;
-
-    if (dto.methode === 'PORTEFEUILLE') {
-      reponseFinale = await this.prisma.transaction(async (tx: any) => {
-        const portefeuille = await this.portefeuilleService.obtenirPortefeuillePourProprietaire(
-          utilisateur,
-          tx,
+      if (facture.statut === 'PAYEE' || facture.statut === 'ANNULEE') {
+        throw new BadRequestException(
+          `Cette facture ne peut pas être payée (statut actuel: ${facture.statut}).`,
         );
+      }
 
-        await this.portefeuilleService.debiter(
-          portefeuille.id,
-          montantAPayer,
-          `Règlement facture #${facture.numero}`,
-          ref,
-          tx,
+      // Calcul du solde restant
+      const paiementsExistants = await this.prisma.orm.public.Paiement
+        .where((p: any) => p.facture_id.eq(facture.id).and(p.statut.eq('PAYE')))
+        .all();
+
+      const dejaPaye = paiementsExistants.reduce(
+        (sum: number, p: any) => sum + Number(p.montant),
+        0,
+      );
+      const restantDu = Number(facture.montant_ttc) - dejaPaye;
+
+      const montantAPayer = dto.montant || restantDu;
+
+      if (montantAPayer <= 0) {
+        throw new BadRequestException('Le montant spécifié doit être strictement positif.');
+      }
+
+      if (montantAPayer > restantDu) {
+        throw new BadRequestException(
+          `Le montant spécifié (${montantAPayer} FCFA) dépasse le solde restant dû (${restantDu} FCFA).`,
         );
+      }
 
-        const datePaiement = new Date();
-        const paiement = await tx.orm.public.Paiement.create({
+      const ref = genererReferencePaiement('PAY-FACT');
+
+      let reponseFinale: any;
+
+      if (dto.methode === 'PORTEFEUILLE') {
+        reponseFinale = await this.prisma.transaction(async (tx: any) => {
+          // Re-vérifier au sein de la transaction le solde restant exact
+          const paiementsTx = await tx.orm.public.Paiement
+            .where((p: any) => p.facture_id.eq(facture.id).and(p.statut.eq('PAYE')))
+            .all();
+
+          const dejaPayeTx = paiementsTx.reduce(
+            (sum: number, p: any) => sum + Number(p.montant),
+            0,
+          );
+          const restantDuTx = Number(facture.montant_ttc) - dejaPayeTx;
+
+          if (montantAPayer > restantDuTx) {
+            throw new BadRequestException(
+              `Le montant spécifié (${montantAPayer} FCFA) dépasse le solde restant dû (${restantDuTx} FCFA).`,
+            );
+          }
+
+          const portefeuille = await this.portefeuilleService.obtenirPortefeuillePourProprietaire(
+            utilisateur,
+            tx,
+          );
+
+          await this.portefeuilleService.debiter(
+            portefeuille.id,
+            montantAPayer,
+            `Règlement facture #${facture.numero}`,
+            ref,
+            tx,
+          );
+
+          const datePaiement = new Date();
+          const paiement = await tx.orm.public.Paiement.create({
+            reference: ref as any,
+            utilisateur_id: utilisateur.id as any,
+            facture_id: facture.id as any,
+            montant: montantAPayer.toString() as any,
+            devise: 'XAF' as any,
+            methode: 'PORTEFEUILLE' as any,
+            type: 'FACTURE' as any,
+            statut: 'PAYE' as any,
+            date_paiement: datePaiement as any,
+          });
+
+          const soldeApresPaiement = restantDuTx - montantAPayer;
+          const estSolde = soldeApresPaiement <= 0;
+          const statutFacture = estSolde ? 'PAYEE' : 'PARTIELLEMENT_PAYEE';
+
+          const factureMaj = await tx.orm.public.Facture
+            .where((f: any) => f.id.eq(facture.id))
+            .update({
+              statut: statutFacture as any,
+              date_paiement: estSolde ? datePaiement : null,
+              date_modification: datePaiement,
+            } as any);
+
+          return {
+            succes: true,
+            paiement,
+            facture: factureMaj,
+            solde_restant: Math.max(0, soldeApresPaiement),
+            message: 'Paiement de facture enregistré avec succès depuis votre portefeuille.',
+          };
+        });
+      } else {
+        const initiation = await this.fournisseurPaiement.initierPaiement({
+          reference: ref,
+          montant: montantAPayer,
+          devise: 'XAF',
+          telephone: dto.telephone_payeur,
+          description: `Paiement facture #${facture.numero}`,
+        });
+
+        const paiement = await this.prisma.orm.public.Paiement.create({
           reference: ref as any,
           utilisateur_id: utilisateur.id as any,
           facture_id: facture.id as any,
           montant: montantAPayer.toString() as any,
           devise: 'XAF' as any,
-          methode: 'PORTEFEUILLE' as any,
+          methode: dto.methode as any,
           type: 'FACTURE' as any,
-          statut: 'PAYE' as any,
-          date_paiement: datePaiement as any,
+          statut: initiation.statut_initial as any,
+          reference_fournisseur: initiation.reference_fournisseur as any,
+          donnees_fournisseur: JSON.stringify(initiation.donnees) as any,
         });
 
-        const soldeApresPaiement = restantDu - montantAPayer;
-        const statutFacture = soldeApresPaiement <= 0 ? 'PAYEE' : 'PARTIELLEMENT_PAYEE';
-
-        const factureMaj = await tx.orm.public.Facture
-          .where((f: any) => f.id.eq(facture.id))
-          .update({
-            statut: statutFacture as any,
-            date_paiement: datePaiement,
-            date_modification: datePaiement,
-          } as any);
-
-        return {
+        reponseFinale = {
           succes: true,
           paiement,
-          facture: factureMaj,
-          message: 'Paiement de facture enregistré avec succès depuis votre portefeuille.',
+          url_paiement: initiation.url_paiement,
+          message: 'Paiement de facture initié. En attente de confirmation.',
         };
-      });
-    } else {
-      const initiation = await this.fournisseurPaiement.initierPaiement({
-        reference: ref,
-        montant: montantAPayer,
-        devise: 'XAF',
-        telephone: dto.telephone_payeur,
-        description: `Paiement facture #${facture.numero}`,
-      });
+      }
 
-      const paiement = await this.prisma.orm.public.Paiement.create({
-        reference: ref as any,
-        utilisateur_id: utilisateur.id as any,
-        facture_id: facture.id as any,
-        montant: montantAPayer.toString() as any,
-        devise: 'XAF' as any,
-        methode: dto.methode as any,
-        type: 'FACTURE' as any,
-        statut: initiation.statut_initial as any,
-        reference_fournisseur: initiation.reference_fournisseur as any,
-        donnees_fournisseur: JSON.stringify(initiation.donnees) as any,
-      });
+      if (cleIdempotence) {
+        await this.idempotenceService.enregistrer(
+          cleIdempotence,
+          'POST',
+          '/paiements/facture',
+          dto,
+          200,
+          reponseFinale,
+          utilisateur.id,
+        );
+      }
 
-      reponseFinale = {
-        succes: true,
-        paiement,
-        url_paiement: initiation.url_paiement,
-        message: 'Paiement de facture initié. En attente de confirmation.',
-      };
+      return reponseFinale;
+    } catch (err) {
+      if (
+        cleIdempotence &&
+        !(err instanceof ConflictException && (err.getResponse() as any)?.code?.startsWith('IDEMPOTENCY_')) &&
+        !(err instanceof ConflictException && (err.getResponse() as any)?.code === 'OPERATION_EN_COURS')
+      ) {
+        await this.idempotenceService.marquerEchec(
+          cleIdempotence,
+          (err as any)?.status || 500,
+          (err as any)?.message,
+        );
+      }
+      throw err;
     }
-
-    if (cleIdempotence) {
-      await this.idempotenceService.enregistrer(
-        cleIdempotence,
-        'POST',
-        '/paiements/facture',
-        dto,
-        200,
-        reponseFinale,
-      );
-    }
-
-    return reponseFinale;
   }
 
   /**
@@ -550,8 +648,20 @@ export class PaiementsService {
     }
 
     // Protection contre les callbacks répétés (idempotence absolue)
-    if (paiement.statut === 'PAYE' || paiement.statut === 'REMBOURSE') {
+    if (
+      paiement.statut === 'PAYE' ||
+      paiement.statut === 'REMBOURSE' ||
+      paiement.statut === 'REMBOURSE_PARTIELLEMENT'
+    ) {
       return { recu: true, message: 'Notification déjà traitée antérieurement.' };
+    }
+
+    if (paiement.statut === 'ANNULE') {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'PAIEMENT_ANNULE',
+        message: 'Ce paiement a été annulé et ne peut plus recevoir de confirmation de paiement.',
+      });
     }
 
     // Vérification de cohérence du montant et de la devise
@@ -565,6 +675,19 @@ export class PaiementsService {
 
     if (notif.statut === 'PAYE') {
       return this.prisma.transaction(async (tx: any) => {
+        // Re-vérifier l'état dans la transaction pour éviter les courses concurrentes
+        const paiementVerrouille = await tx.orm.public.Paiement
+          .where((p: any) => p.id.eq(paiement.id))
+          .first();
+
+        if (
+          paiementVerrouille?.statut === 'PAYE' ||
+          paiementVerrouille?.statut === 'REMBOURSE' ||
+          paiementVerrouille?.statut === 'REMBOURSE_PARTIELLEMENT'
+        ) {
+          return { recu: true, message: 'Notification déjà traitée antérieurement.' };
+        }
+
         const datePaiement = new Date();
 
         // 1. Mettre à jour le paiement
@@ -609,13 +732,32 @@ export class PaiementsService {
             tx,
           );
         } else if (paiement.type === 'FACTURE' && paiement.facture_id) {
-          await tx.orm.public.Facture
+          const facture = await tx.orm.public.Facture
             .where((f: any) => f.id.eq(paiement.facture_id))
-            .update({
-              statut: 'PAYEE',
-              date_paiement: datePaiement,
-              date_modification: datePaiement,
-            } as any);
+            .first();
+
+          if (facture && facture.statut !== 'ANNULEE') {
+            // Cumul de tous les paiements confirmés pour cette facture
+            const paiementsConfirmes = await tx.orm.public.Paiement
+              .where((p: any) => p.facture_id.eq(paiement.facture_id).and(p.statut.eq('PAYE')))
+              .all();
+
+            const totalPaye = paiementsConfirmes.reduce(
+              (sum: number, p: any) => sum + Number(p.montant),
+              0,
+            );
+            const montantTtc = Number(facture.montant_ttc);
+            const estSolde = totalPaye >= montantTtc;
+            const statutFacture = estSolde ? 'PAYEE' : 'PARTIELLEMENT_PAYEE';
+
+            await tx.orm.public.Facture
+              .where((f: any) => f.id.eq(facture.id))
+              .update({
+                statut: statutFacture as any,
+                date_paiement: estSolde ? datePaiement : null,
+                date_modification: datePaiement,
+              } as any);
+          }
         }
 
         return {

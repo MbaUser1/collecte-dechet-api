@@ -68,9 +68,11 @@ export class QuotaService {
 
     // 2. Protection contre la double réservation pour la même demande
     const reservationExistante = await prisma.orm.public.UtilisationAbonnement
-      .where((u: any) => u.demande_collecte_id.eq(demandeCollecteId))
-      .where((u: any) => u.type.eq('RESERVATION'))
-      .where((u: any) => u.statut.eq('ACTIF'))
+      .where((u: any) =>
+        u.demande_collecte_id.eq(demandeCollecteId)
+          .and(u.type.eq('RESERVATION'))
+          .and(u.statut.eq('ACTIF')),
+      )
       .first();
 
     if (reservationExistante) {
@@ -87,13 +89,25 @@ export class QuotaService {
       statut: 'ACTIF' as any,
     });
 
-    // 4. Mettre à jour les compteurs de l'abonnement
-    await prisma.orm.public.Abonnement
-      .where((a: any) => a.id.eq(abonnementId))
+    // 4. Mettre à jour les compteurs de l'abonnement avec contrôle OCC
+    const majAbonnement = await prisma.orm.public.Abonnement
+      .where((a: any) =>
+        a.id.eq(abonnementId)
+          .and(a.nombre_collectes_reservees.eq(abonnement.nombre_collectes_reservees))
+          .and(a.nombre_collectes_utilisees.eq(abonnement.nombre_collectes_utilisees)),
+      )
       .update({
         nombre_collectes_reservees: abonnement.nombre_collectes_reservees + 1,
         date_modification: new Date(),
       } as any);
+
+    if (!majAbonnement) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'CONCURRENCE_ABONNEMENT_QUOTA',
+        message: 'Le quota de cet abonnement a été modifié simultanément par une autre opération. Veuillez réessayer.',
+      });
+    }
   }
 
   /**
@@ -104,16 +118,20 @@ export class QuotaService {
 
     // 1. Rechercher la réservation active liée à cette demande
     const reservation = await prisma.orm.public.UtilisationAbonnement
-      .where((u: any) => u.demande_collecte_id.eq(demandeCollecteId))
-      .where((u: any) => u.type.eq('RESERVATION'))
-      .where((u: any) => u.statut.eq('ACTIF'))
+      .where((u: any) =>
+        u.demande_collecte_id.eq(demandeCollecteId)
+          .and(u.type.eq('RESERVATION'))
+          .and(u.statut.eq('ACTIF')),
+      )
       .first();
 
     if (!reservation) {
       // Vérifier si elle est déjà consommée pour idempotence
       const dejaConsommee = await prisma.orm.public.UtilisationAbonnement
-        .where((u: any) => u.demande_collecte_id.eq(demandeCollecteId))
-        .where((u: any) => u.type.eq('CONSOMMATION'))
+        .where((u: any) =>
+          u.demande_collecte_id.eq(demandeCollecteId)
+            .and(u.type.eq('CONSOMMATION')),
+        )
         .first();
 
       if (dejaConsommee) {
@@ -131,12 +149,16 @@ export class QuotaService {
       throw new BadRequestException('Abonnement lié introuvable.');
     }
 
-    // 2. Marquer la réservation comme consommée
-    await prisma.orm.public.UtilisationAbonnement
-      .where((u: any) => u.id.eq(reservation.id))
+    // 2. Marquer atomiquement la réservation comme consommée
+    const reservationConsommee = await prisma.orm.public.UtilisationAbonnement
+      .where((u: any) => u.id.eq(reservation.id).and(u.statut.eq('ACTIF')))
       .update({
         statut: 'CONSOMME',
       } as any);
+
+    if (!reservationConsommee) {
+      return; // Déjà consommée par un appel concurrent
+    }
 
     // 3. Créer la trace CONSOMMATION
     await prisma.orm.public.UtilisationAbonnement.create({
@@ -168,9 +190,11 @@ export class QuotaService {
 
     // 1. Rechercher la réservation active liée à cette demande
     const reservation = await prisma.orm.public.UtilisationAbonnement
-      .where((u: any) => u.demande_collecte_id.eq(demandeCollecteId))
-      .where((u: any) => u.type.eq('RESERVATION'))
-      .where((u: any) => u.statut.eq('ACTIF'))
+      .where((u: any) =>
+        u.demande_collecte_id.eq(demandeCollecteId)
+          .and(u.type.eq('RESERVATION'))
+          .and(u.statut.eq('ACTIF')),
+      )
       .first();
 
     if (!reservation) {
@@ -186,12 +210,16 @@ export class QuotaService {
       throw new BadRequestException('Abonnement lié introuvable.');
     }
 
-    // 2. Marquer la réservation comme libérée
-    await prisma.orm.public.UtilisationAbonnement
-      .where((u: any) => u.id.eq(reservation.id))
+    // 2. Marquer atomiquement la réservation comme libérée
+    const reservationLiberee = await prisma.orm.public.UtilisationAbonnement
+      .where((u: any) => u.id.eq(reservation.id).and(u.statut.eq('ACTIF')))
       .update({
         statut: 'LIBERE',
       } as any);
+
+    if (!reservationLiberee) {
+      return; // Déjà libérée par un appel concurrent
+    }
 
     // 3. Créer la trace LIBERATION
     await prisma.orm.public.UtilisationAbonnement.create({

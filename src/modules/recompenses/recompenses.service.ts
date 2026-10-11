@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   FiltreRecompensesDto,
@@ -200,7 +201,7 @@ export class RecompensesService {
 
       // 3. Créer le bon de réclamation avec code unique
       const dateExpiration = new Date(Date.now() + 30 * 24 * 3600 * 1000); // 30 jours
-      const codeUnique = `REC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      const codeUnique = `REC-${Date.now().toString(36).toUpperCase()}-${randomBytes(4).toString('hex').toUpperCase()}`;
 
       const reclamation = await tx.orm.public.ReclamationRecompense.create({
         utilisateur_id: utilisateurId as any,
@@ -373,49 +374,60 @@ export class RecompensesService {
    * Administration / Partenaire : validation d'un bon de réclamation présenté par un citoyen.
    */
   async validerUtilisationReclamation(codeReclamation: string) {
-    const reclamation = await this.prisma.orm.public.ReclamationRecompense
-      .where((r: any) => r.code_reclamation.eq(codeReclamation.trim().toUpperCase()))
-      .first();
+    return this.prisma.transaction(async (tx: any) => {
+      const codeNormalise = codeReclamation.trim().toUpperCase();
+      const reclamation = await tx.orm.public.ReclamationRecompense
+        .where((r: any) => r.code_reclamation.eq(codeNormalise))
+        .first();
 
-    if (!reclamation) {
-      throw new NotFoundException('Bon de réclamation introuvable.');
-    }
+      if (!reclamation) {
+        throw new NotFoundException('Bon de réclamation introuvable.');
+      }
 
-    if (reclamation.statut === 'UTILISEE') {
+      if (reclamation.statut === 'UTILISEE') {
+        return {
+          succes: true,
+          message: 'Ce bon a déjà été utilisé.',
+          reclamation,
+        };
+      }
+
+      if (reclamation.statut !== 'RESERVEE') {
+        throw new BadRequestException(`Ce bon ne peut pas être validé (statut actuel: ${reclamation.statut}).`);
+      }
+
+      // Vérifier l'expiration
+      if (new Date(reclamation.date_expiration) < new Date()) {
+        await tx.orm.public.ReclamationRecompense
+          .where((r: any) => r.id.eq(reclamation.id).and(r.statut.eq('RESERVEE')))
+          .update({ statut: 'EXPIREE', date_modification: new Date() } as any);
+
+        throw new BadRequestException('Ce bon de réclamation a expiré.');
+      }
+
+      const maintenant = new Date();
+      const maj = await tx.orm.public.ReclamationRecompense
+        .where((r: any) => r.id.eq(reclamation.id).and(r.statut.eq('RESERVEE')))
+        .update({
+          statut: 'UTILISEE',
+          date_utilisation: maintenant,
+          date_modification: maintenant,
+        } as any);
+
+      if (!maj) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'BON_DEJA_UTILISE',
+          message: 'Ce bon a déjà été utilisé ou mis à jour concurremment.',
+        });
+      }
+
       return {
         succes: true,
-        message: 'Ce bon a déjà été utilisé.',
-        reclamation,
+        message: 'Bon de réclamation validé avec succès. Récompense remise au client.',
+        reclamation: maj,
       };
-    }
-
-    if (reclamation.statut !== 'RESERVEE') {
-      throw new BadRequestException(`Ce bon ne peut pas être validé (statut actuel: ${reclamation.statut}).`);
-    }
-
-    // Vérifier l'expiration
-    if (new Date(reclamation.date_expiration) < new Date()) {
-      await this.prisma.orm.public.ReclamationRecompense
-        .where((r: any) => r.id.eq(reclamation.id))
-        .update({ statut: 'EXPIREE', date_modification: new Date() } as any);
-
-      throw new BadRequestException('Ce bon de réclamation a expiré.');
-    }
-
-    const maintenant = new Date();
-    const maj = await this.prisma.orm.public.ReclamationRecompense
-      .where((r: any) => r.id.eq(reclamation.id))
-      .update({
-        statut: 'UTILISEE',
-        date_utilisation: maintenant,
-        date_modification: maintenant,
-      } as any);
-
-    return {
-      succes: true,
-      message: 'Bon de réclamation validé avec succès. Récompense remise au client.',
-      reclamation: maj,
-    };
+    });
   }
 
   /**
@@ -423,8 +435,9 @@ export class RecompensesService {
    */
   async annulerReclamation(codeReclamation: string, motif?: string) {
     return this.prisma.transaction(async (tx: any) => {
+      const codeNormalise = codeReclamation.trim().toUpperCase();
       const reclamation = await tx.orm.public.ReclamationRecompense
-        .where((r: any) => r.code_reclamation.eq(codeReclamation.trim().toUpperCase()))
+        .where((r: any) => r.code_reclamation.eq(codeNormalise))
         .first();
 
       if (!reclamation) {
@@ -445,13 +458,21 @@ export class RecompensesService {
 
       const maintenant = new Date();
 
-      // 1. Mettre à jour la réclamation
+      // 1. Mettre à jour la réclamation de manière strictement atomique
       const maj = await tx.orm.public.ReclamationRecompense
-        .where((r: any) => r.id.eq(reclamation.id))
+        .where((r: any) => r.id.eq(reclamation.id).and(r.statut.eq('RESERVEE')))
         .update({
           statut: 'ANNULEE',
           date_modification: maintenant,
         } as any);
+
+      if (!maj) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'BON_DEJA_ANNULE',
+          message: 'Ce bon n’est plus en état d’être annulé (déjà traité par une autre opération).',
+        });
+      }
 
       // 2. Restaurer le stock
       const recompense = await tx.orm.public.Recompense

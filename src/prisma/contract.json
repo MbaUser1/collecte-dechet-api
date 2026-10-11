@@ -60,6 +60,10 @@
       "model": "Partenaire",
       "namespace": "public"
     },
+    "participations_collectes_communautaires": {
+      "model": "ParticipationCollecteCommunautaire",
+      "namespace": "public"
+    },
     "plans_abonnement": {
       "model": "PlanAbonnement",
       "namespace": "public"
@@ -376,6 +380,23 @@
               {
                 "name": "RemboursePartiellement",
                 "value": "REMBOURSE_PARTIELLEMENT"
+              }
+            ]
+          },
+          "StatutParticipationCollecte": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "Inscrit",
+                "value": "INSCRIT"
+              },
+              {
+                "name": "Confirme",
+                "value": "CONFIRME"
+              },
+              {
+                "name": "Annule",
+                "value": "ANNULE"
               }
             ]
           },
@@ -3224,6 +3245,116 @@
               "table": "partenaires"
             }
           },
+          "ParticipationCollecteCommunautaire": {
+            "fields": {
+              "date_creation": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "kind": "scalar"
+                }
+              },
+              "date_modification": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int8@1",
+                  "kind": "scalar"
+                }
+              },
+              "signalement_id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int8@1",
+                  "kind": "scalar"
+                }
+              },
+              "statut": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "StatutParticipationCollecte",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "utilisateur_id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int8@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "signalement": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "signalement_id"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Signalement",
+                  "namespace": "public"
+                }
+              },
+              "utilisateur": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "utilisateur_id"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Utilisateur",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "date_creation": {
+                  "column": "date_creation"
+                },
+                "date_modification": {
+                  "column": "date_modification"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "signalement_id": {
+                  "column": "signalement_id"
+                },
+                "statut": {
+                  "column": "statut"
+                },
+                "utilisateur_id": {
+                  "column": "utilisateur_id"
+                }
+              },
+              "namespaceId": "public",
+              "table": "participations_collectes_communautaires"
+            }
+          },
           "PlanAbonnement": {
             "fields": {
               "date_creation": {
@@ -4442,6 +4573,21 @@
                   "namespace": "public"
                 }
               },
+              "participations": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "signalement_id"
+                  ]
+                },
+                "to": {
+                  "model": "ParticipationCollecteCommunautaire",
+                  "namespace": "public"
+                }
+              },
               "transactions_points": {
                 "cardinality": "1:N",
                 "on": {
@@ -5385,6 +5531,21 @@
                 },
                 "to": {
                   "model": "Paiement",
+                  "namespace": "public"
+                }
+              },
+              "participations_communautaires": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "utilisateur_id"
+                  ]
+                },
+                "to": {
+                  "model": "ParticipationCollecteCommunautaire",
                   "namespace": "public"
                 }
               },
@@ -8247,6 +8408,146 @@
               },
               "uniques": []
             },
+            "participations_collectes_communautaires": {
+              "checks": [
+                {
+                  "expression": "\"statut\" IN ('INSCRIT', 'CONFIRME', 'ANNULE')",
+                  "name": "participations_collectes_communautaires_statut_check_4641912d",
+                  "prefix": "participations_collectes_communautaires_statut_check"
+                }
+              ],
+              "columns": {
+                "date_creation": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "date_modification": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/int8@1",
+                  "default": {
+                    "expression": "autoincrement()",
+                    "kind": "function"
+                  },
+                  "nativeType": "int8",
+                  "nullable": false
+                },
+                "signalement_id": {
+                  "codecId": "pg/int8@1",
+                  "nativeType": "int8",
+                  "nullable": false
+                },
+                "statut": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "INSCRIT"
+                  },
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "StatutParticipationCollecte",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "utilisateur_id": {
+                  "codecId": "pg/int8@1",
+                  "nativeType": "int8",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "signalement_id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "participations_collectes_communautaires"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "signalements"
+                  }
+                },
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "utilisateur_id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "participations_collectes_communautaires"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "utilisateurs"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "signalement_id"
+                  ],
+                  "name": "part_comm_sig_idx_45307c43",
+                  "prefix": "part_comm_sig_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "signalement_id",
+                    "utilisateur_id"
+                  ],
+                  "name": "part_comm_sig_user_unique_5e49cb7f",
+                  "prefix": "part_comm_sig_user_unique",
+                  "unique": true
+                },
+                {
+                  "columns": [
+                    "statut"
+                  ],
+                  "name": "part_comm_statut_idx_9bf78e02",
+                  "prefix": "part_comm_statut_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "utilisateur_id"
+                  ],
+                  "name": "part_comm_user_idx_afedb02c",
+                  "prefix": "part_comm_user_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "plans_abonnement": {
               "checks": [
                 {
@@ -10550,6 +10851,14 @@
                 "REMBOURSE_PARTIELLEMENT"
               ]
             },
+            "StatutParticipationCollecte": {
+              "kind": "valueSet",
+              "values": [
+                "INSCRIT",
+                "CONFIRME",
+                "ANNULE"
+              ]
+            },
             "StatutPortefeuille": {
               "kind": "valueSet",
               "values": [
@@ -10609,7 +10918,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "1a692cc8236bc18f44eeb93d7cc533330c52577b407763d38f98b3411d5ba9ef"
+    "storageHash": "e49e0b5f7f662df4d2a4661f6b9a514bd9ed1523d8ad669fd46c1359c1ac40d4"
   },
   "execution": {
     "executionHash": "51ce89033a17e75c93f34dd250f5cfccd7026626fe49f1402f7f340da6fc578a",

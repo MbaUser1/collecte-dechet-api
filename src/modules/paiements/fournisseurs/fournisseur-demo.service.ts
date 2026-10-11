@@ -1,5 +1,5 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 import type {
   IFournisseurPaiement,
   ResultatInitiationPaiement,
@@ -23,7 +23,7 @@ export class FournisseurDemoService implements IFournisseurPaiement {
       );
     }
 
-    const refFournisseur = `DEMO-EXT-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const refFournisseur = `DEMO-EXT-${Date.now()}-${randomBytes(4).toString('hex').toUpperCase()}`;
 
     return {
       reference_fournisseur: refFournisseur,

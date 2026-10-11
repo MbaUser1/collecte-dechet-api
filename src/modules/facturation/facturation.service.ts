@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   FiltreDevisDto,
@@ -15,6 +16,12 @@ import {
   ResultatPagine,
   validerChampTri,
 } from '../../common/dto/pagination-query.dto.js';
+
+function genererNumeroDocument(prefix: string): string {
+  const ts = Date.now().toString(36).toUpperCase();
+  const alea = randomBytes(4).toString('hex').toUpperCase();
+  return `${prefix}-${ts}-${alea}`;
+}
 
 @Injectable()
 export class FacturationService {
@@ -167,7 +174,7 @@ export class FacturationService {
         } as any);
 
       // 2. Générer la facture correspondante
-      const numeroFacture = `FACT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      const numeroFacture = genererNumeroDocument('FACT');
       const dateEcheance = new Date(Date.now() + 30 * 24 * 3600 * 1000); // Échéance 30j
 
       const facture = await tx.orm.public.Facture.create({
@@ -354,7 +361,7 @@ export class FacturationService {
     const montantTva = Number(dto.montant_tva || 0);
     const montantTtc = Math.round((montantHt + montantTva) * 100) / 100;
 
-    const numeroDevis = `DEV-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const numeroDevis = genererNumeroDocument('DEV');
 
     const devis = await this.prisma.orm.public.Devis.create({
       numero: numeroDevis as any,
@@ -384,6 +391,20 @@ export class FacturationService {
 
     if (!devis) {
       throw new NotFoundException('Devis introuvable.');
+    }
+
+    if (devis.statut === 'EN_ATTENTE_VALIDATION') {
+      return {
+        succes: true,
+        message: 'Ce devis est déjà en attente de validation.',
+        devis,
+      };
+    }
+
+    if (devis.statut !== 'BROUILLON') {
+      throw new BadRequestException(
+        `Seul un devis au statut BROUILLON peut être émis (statut actuel: ${devis.statut}).`,
+      );
     }
 
     const maintenant = new Date();
@@ -418,7 +439,7 @@ export class FacturationService {
     const montantTva = Number(dto.montant_tva || 0);
     const montantTtc = Math.round((montantHt + montantTva) * 100) / 100;
 
-    const numeroFacture = `FACT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const numeroFacture = genererNumeroDocument('FACT');
 
     const facture = await this.prisma.orm.public.Facture.create({
       numero: numeroFacture as any,

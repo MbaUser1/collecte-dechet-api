@@ -1,14 +1,18 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { estSecretFaibleOuInterdit } from '../../../config/env.validation.js';
 
 export interface ChargeUtileJwt {
   sub: string;
   role: string;
   telephone: string;
+  type?: string;
   iat?: number;
   exp?: number;
 }
+
+const ROLES_AUTORISES = ['ADMINISTRATEUR', 'COLLECTEUR', 'ENTREPRISE', 'PARTICULIER'];
 
 @Injectable()
 export class JetonService {
@@ -22,11 +26,19 @@ export class JetonService {
 
     if (!secret || secret.trim().length === 0) {
       if (estProd) {
-        throw new Error("JWT_ACCESS_SECRET est obligatoire en environnement de production.");
+        throw new Error('JWT_ACCESS_SECRET est obligatoire en environnement de production.');
       }
       this.logger.warn('JWT_ACCESS_SECRET non configuré. Utilisation d\'un secret de développement par défaut.');
       this.secretAcces = 'secret-dev-insecure-change-in-production-collecte-dechets-api';
     } else {
+      if (estProd) {
+        if (secret.length < 32) {
+          throw new Error('JWT_ACCESS_SECRET doit comporter au moins 32 caractères en production.');
+        }
+        if (estSecretFaibleOuInterdit(secret)) {
+          throw new Error('JWT_ACCESS_SECRET utilise une valeur de développement interdite en production.');
+        }
+      }
       this.secretAcces = secret;
     }
 
@@ -68,6 +80,7 @@ export class JetonService {
 
     const chargeUtile: ChargeUtileJwt = {
       ...payload,
+      type: 'access',
       iat: maintenant,
       exp: expiration,
     };
@@ -126,12 +139,21 @@ export class JetonService {
       const chargeUtile = JSON.parse(chargeUtileJson) as ChargeUtileJwt;
 
       const maintenant = Math.floor(Date.now() / 1000);
-      if (!chargeUtile.exp || chargeUtile.exp < maintenant) {
+      if (!chargeUtile.exp || chargeUtile.exp <= maintenant) {
         throw new UnauthorizedException('Le jeton d\'accès a expiré.');
       }
 
-      if (!chargeUtile.sub || !chargeUtile.role) {
-        throw new UnauthorizedException('Claims obligatoires manquants dans le jeton d\'accès.');
+      if (!chargeUtile.sub || typeof chargeUtile.sub !== 'string' || !/^\d+$/.test(chargeUtile.sub)) {
+        throw new UnauthorizedException('Claims obligatoires manquants ou invalides dans le jeton d\'accès.');
+      }
+
+      if (!chargeUtile.role || !ROLES_AUTORISES.includes(chargeUtile.role)) {
+        throw new UnauthorizedException('Rôle utilisateur non autorisé ou invalide dans le jeton d\'accès.');
+      }
+
+      // 4. Distinction stricte de type de jeton (anti-confusion access/refresh)
+      if (chargeUtile.type && chargeUtile.type !== 'access') {
+        throw new UnauthorizedException('Type de jeton invalide : un jeton d\'accès est requis.');
       }
 
       return chargeUtile;

@@ -149,44 +149,66 @@ export class AuthService {
    * Rafraîchissement avec invalidation atomique de l'ancien jeton (rotation des jetons).
    */
   async rafraichir(dto: RafraichirDto, ip?: string, userAgent?: string) {
-    const hashJeton = this.hachage.hacherJeton(dto.refresh_token);
-
-    const session = await this.prisma.orm.public.SessionUtilisateur
-      .where((s) => s.jeton_refresh_hash.eq(hashJeton as any))
-      .first();
-
-    if (!session) {
-      throw new UnauthorizedException('Jeton de rafraîchissement invalide ou inexistant.');
+    if (!dto.refresh_token || typeof dto.refresh_token !== 'string') {
+      throw new UnauthorizedException('Jeton de rafraîchissement manquant ou invalide.');
     }
 
-    if (session.revoque) {
-      // Détection de réutilisation suspecte : alerte potentielle
-      throw new UnauthorizedException('Ce jeton de rafraîchissement a déjà été utilisé ou révoqué.');
+    // Protection anti-confusion : refuser si un jeton d'accès JWT est envoyé comme refresh token
+    if (dto.refresh_token.includes('.') || dto.refresh_token.startsWith('eyJ')) {
+      throw new UnauthorizedException(
+        'Format de jeton invalide : un jeton d’accès ne peut pas être utilisé comme jeton de rafraîchissement.',
+      );
     }
 
-    const maintenant = new Date();
-    if (new Date(session.date_expiration) < maintenant) {
-      throw new UnauthorizedException('Le jeton de rafraîchissement a expiré.');
+    const executer = async (prismaClient: any) => {
+      const hashJeton = this.hachage.hacherJeton(dto.refresh_token);
+
+      const session = await prismaClient.orm.public.SessionUtilisateur
+        .where((s: any) => s.jeton_refresh_hash.eq(hashJeton as any))
+        .first();
+
+      if (!session) {
+        throw new UnauthorizedException('Jeton de rafraîchissement invalide ou inexistant.');
+      }
+
+      if (session.revoque) {
+        // Détection de réutilisation suspecte : alerte potentielle
+        throw new UnauthorizedException('Ce jeton de rafraîchissement a déjà été utilisé ou révoqué.');
+      }
+
+      const maintenant = new Date();
+      if (new Date(session.date_expiration) < maintenant) {
+        throw new UnauthorizedException('Le jeton de rafraîchissement a expiré.');
+      }
+
+      // 1. Invalider immédiatement et de manière atomique conditionnelle l'ancienne session
+      const sessionRevoquee = await prismaClient.orm.public.SessionUtilisateur
+        .where((s: any) => s.id.eq(session.id).and(s.revoque.eq(false)))
+        .update({ revoque: true } as any);
+
+      if (!sessionRevoquee) {
+        throw new UnauthorizedException('Ce jeton de rafraîchissement a déjà été utilisé ou révoqué.');
+      }
+
+      // 2. Charger l'utilisateur associé pour vérifier son statut
+      const utilisateur = await prismaClient.orm.public.Utilisateur
+        .where((u: any) => u.id.eq(session.utilisateur_id))
+        .first();
+
+      if (!utilisateur || utilisateur.statut !== 'ACTIF') {
+        throw new UnauthorizedException('Compte utilisateur indisponible ou inactif.');
+      }
+
+      // 3. Créer une nouvelle session et émettre de nouveaux jetons
+      const tokens = await this.creerSessionEtJetons(utilisateur, ip, userAgent, prismaClient);
+
+      return { tokens };
+    };
+
+    if (typeof this.prisma.transaction === 'function') {
+      return this.prisma.transaction(executer);
     }
-
-    // 1. Invalider immédiatement et de manière atomique l'ancienne session
-    await this.prisma.orm.public.SessionUtilisateur
-      .where((s) => s.id.eq(session.id))
-      .update({ revoque: true } as any);
-
-    // 2. Charger l'utilisateur associé pour vérifier son statut
-    const utilisateur = await this.prisma.orm.public.Utilisateur
-      .where((u) => u.id.eq(session.utilisateur_id))
-      .first();
-
-    if (!utilisateur || utilisateur.statut !== 'ACTIF') {
-      throw new UnauthorizedException('Compte utilisateur indisponible ou inactif.');
-    }
-
-    // 3. Créer une nouvelle session et émettre de nouveaux jetons
-    const tokens = await this.creerSessionEtJetons(utilisateur, ip, userAgent);
-
-    return { tokens };
+    return executer(this.prisma);
   }
 
   /**
@@ -338,19 +360,24 @@ export class AuthService {
    */
   async revoquerToutesLesSessions(utilisateurId: bigint) {
     await this.prisma.orm.public.SessionUtilisateur
-      .where((s) => s.utilisateur_id.eq(utilisateurId))
-      .where((s) => s.revoque.eq(false))
+      .where((s: any) => s.utilisateur_id.eq(utilisateurId).and(s.revoque.eq(false)))
       .update({ revoque: true } as any);
 
     return { message: 'Toutes vos sessions actives ont été révoquées avec succès.' };
   }
 
-  private async creerSessionEtJetons(utilisateur: any, ip?: string, userAgent?: string) {
+  private async creerSessionEtJetons(
+    utilisateur: any,
+    ip?: string,
+    userAgent?: string,
+    clientTx?: any,
+  ) {
+    const prisma = clientTx || this.prisma;
     const refreshTokenBrut = this.hachage.genererJetonAleatoire(32);
     const refreshTokenHash = this.hachage.hacherJeton(refreshTokenBrut);
     const dateExpiration = new Date(Date.now() + 30 * 24 * 3600 * 1000); // 30 jours
 
-    await this.prisma.orm.public.SessionUtilisateur.create({
+    await prisma.orm.public.SessionUtilisateur.create({
       utilisateur_id: utilisateur.id,
       jeton_refresh_hash: refreshTokenHash as any,
       adresse_ip: (ip ?? null) as any,

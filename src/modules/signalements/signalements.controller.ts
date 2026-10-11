@@ -71,6 +71,24 @@ export class SignalementsController {
     };
   }
 
+  @Get('participations/me')
+  async listerMesParticipations(
+    @Query() filtre: FiltreSignalementsDto,
+    @UtilisateurActuel() utilisateur: any,
+  ) {
+    const resultat = await this.signalementsService.listerMesParticipations(
+      BigInt(utilisateur.id),
+      filtre,
+    );
+
+    return {
+      success: true,
+      message: 'Vos participations communautaires ont été récupérées avec succès.',
+      data: resultat.elements,
+      pagination: resultat.pagination,
+    };
+  }
+
   @Post(':id/participer')
   @HttpCode(HttpStatus.OK)
   async participer(
@@ -78,6 +96,27 @@ export class SignalementsController {
     @UtilisateurActuel() utilisateur: any,
   ) {
     const resultat = await this.signalementsService.participerCollecteCommunautaire(
+      BigInt(id),
+      {
+        id: BigInt(utilisateur.id),
+        role: utilisateur.role,
+      },
+    );
+
+    return {
+      success: true,
+      message: resultat.message,
+      data: resultat,
+    };
+  }
+
+  @Post(':id/annuler-participation')
+  @HttpCode(HttpStatus.OK)
+  async annulerParticipation(
+    @Param('id', ParseIntPipe) id: number,
+    @UtilisateurActuel() utilisateur: any,
+  ) {
+    const resultat = await this.signalementsService.annulerParticipation(
       BigInt(id),
       {
         id: BigInt(utilisateur.id),

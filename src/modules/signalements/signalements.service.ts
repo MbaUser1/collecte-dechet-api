@@ -386,29 +386,170 @@ export class SignalementsService {
   }
 
   /**
-   * Réclamation / participation d'un citoyen à un chantier de nettoyage communautaire.
+   * Enregistrement atomique de la participation d'un citoyen à un chantier de nettoyage communautaire.
+   * Persiste réellement l'inscription dans la table participations_collectes_communautaires.
    */
   async participerCollecteCommunautaire(
     signalementId: bigint,
     utilisateur: { id: bigint; role: string },
   ) {
-    const signalement = await this.prisma.orm.public.Signalement
-      .where((s: any) => s.id.eq(signalementId))
-      .first();
-
-    if (!signalement) {
-      throw new NotFoundException('Collecte communautaire introuvable.');
+    if (
+      utilisateur.role !== 'PARTICULIER' &&
+      utilisateur.role !== 'ENTREPRISE' &&
+      utilisateur.role !== 'ADMINISTRATEUR'
+    ) {
+      throw new ForbiddenException('Seuls les particuliers et entreprises peuvent participer aux chantiers citoyens.');
     }
 
-    if (signalement.statut !== 'VALIDE') {
-      throw new BadRequestException('Cette collecte communautaire n’est plus ouverte aux participations.');
+    return this.prisma.transaction(async (tx: any) => {
+      const signalement = await tx.orm.public.Signalement
+        .where((s: any) => s.id.eq(signalementId))
+        .first();
+
+      if (!signalement) {
+        throw new NotFoundException('Collecte communautaire introuvable.');
+      }
+
+      if (signalement.statut !== 'VALIDE') {
+        throw new BadRequestException('Cette collecte communautaire n’est plus ouverte aux participations.');
+      }
+
+      // Vérifier si une participation existe déjà pour cet utilisateur sur ce signalement
+      const existante = await tx.orm.public.ParticipationCollecteCommunautaire
+        .where((p: any) => p.signalement_id.eq(signalementId).and(p.utilisateur_id.eq(utilisateur.id)))
+        .first();
+
+      let participation: any;
+      const maintenant = new Date();
+
+      if (existante) {
+        if (existante.statut === 'INSCRIT' || existante.statut === 'CONFIRME') {
+          throw new ConflictException({
+            statusCode: 409,
+            code: 'PARTICIPATION_DEJA_ENREGISTREE',
+            message: 'Vous êtes déjà inscrit à cette collecte communautaire.',
+          });
+        }
+
+        // Réactivation d'une inscription précédemment annulée
+        participation = await tx.orm.public.ParticipationCollecteCommunautaire
+          .where((p: any) => p.id.eq(existante.id))
+          .update({
+            statut: 'INSCRIT',
+            date_modification: maintenant,
+          } as any);
+      } else {
+        // Nouvelle inscription persistée en base
+        try {
+          participation = await tx.orm.public.ParticipationCollecteCommunautaire.create({
+            signalement_id: signalementId as any,
+            utilisateur_id: utilisateur.id as any,
+            statut: 'INSCRIT' as any,
+            date_creation: maintenant as any,
+            date_modification: maintenant as any,
+          });
+        } catch (err: any) {
+          if (err?.code === 'P2002' || err?.message?.includes('unique') || err?.message?.includes('Unique')) {
+            throw new ConflictException({
+              statusCode: 409,
+              code: 'PARTICIPATION_DEJA_ENREGISTREE',
+              message: 'Vous êtes déjà inscrit à cette collecte communautaire.',
+            });
+          }
+          throw err;
+        }
+      }
+
+      return {
+        succes: true,
+        message: 'Participation enregistrée avec succès au chantier citoyen.',
+        signalement,
+        participant_id: utilisateur.id,
+        participation,
+      };
+    });
+  }
+
+  /**
+   * Annulation de la participation d'un citoyen à un chantier communautaire.
+   */
+  async annulerParticipation(
+    signalementId: bigint,
+    utilisateur: { id: bigint; role: string },
+  ) {
+    return this.prisma.transaction(async (tx: any) => {
+      const participation = await tx.orm.public.ParticipationCollecteCommunautaire
+        .where((p: any) => p.signalement_id.eq(signalementId).and(p.utilisateur_id.eq(utilisateur.id)))
+        .first();
+
+      if (!participation) {
+        throw new NotFoundException('Aucune participation trouvée pour ce chantier citoyen.');
+      }
+
+      if (participation.statut === 'ANNULE') {
+        return {
+          succes: true,
+          message: 'Votre participation est déjà annulée.',
+          participation,
+        };
+      }
+
+      const maintenant = new Date();
+      const maj = await tx.orm.public.ParticipationCollecteCommunautaire
+        .where((p: any) => p.id.eq(participation.id))
+        .update({
+          statut: 'ANNULE',
+          date_modification: maintenant,
+        } as any);
+
+      return {
+        succes: true,
+        message: 'Votre participation à la collecte communautaire a été annulée.',
+        participation: maj,
+      };
+    });
+  }
+
+  /**
+   * Consultation paginée de ses propres participations aux chantiers communautaires.
+   */
+  async listerMesParticipations(
+    utilisateurId: bigint,
+    filtre: FiltreSignalementsDto,
+  ): Promise<ResultatPagine<any>> {
+    let query: any = this.prisma.orm.public.ParticipationCollecteCommunautaire
+      .where((p: any) => p.utilisateur_id.eq(utilisateurId));
+
+    if (filtre.statut && filtre.statut !== 'TOUS') {
+      query = query.where((p: any) => p.statut.eq(filtre.statut));
     }
+
+    const total = await query.count();
+
+    const champTri = validerChampTri(
+      filtre.trier_par,
+      ['id', 'date_creation', 'statut'],
+      'date_creation',
+    );
+    const estDesc = (filtre.ordre || 'desc').toLowerCase() === 'desc';
+
+    query = query.orderBy((p: any) =>
+      estDesc ? p[champTri].desc() : p[champTri].asc(),
+    );
+
+    const elements = await query
+      .limit(filtre.limite)
+      .offset(filtre.offset)
+      .all();
 
     return {
-      succes: true,
-      message: 'Participation enregistrée avec succès au chantier citoyen.',
-      signalement,
-      participant_id: utilisateur.id,
+      elements,
+      pagination: {
+        total,
+        page: filtre.page,
+        limite: filtre.limite,
+        pages_totales: Math.ceil(total / filtre.limite) || 1,
+      },
     };
   }
 }
