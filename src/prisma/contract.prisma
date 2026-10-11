@@ -1,0 +1,1024 @@
+// use prisma-8
+
+enum RoleUtilisateur {
+  Particulier = "PARTICULIER"
+  Entreprise = "ENTREPRISE"
+  Collecteur = "COLLECTEUR"
+  Administrateur = "ADMINISTRATEUR"
+}
+
+enum StatutUtilisateur {
+  Actif = "ACTIF"
+  Suspendu = "SUSPENDU"
+  Inactif = "INACTIF"
+}
+
+enum StatutPortefeuille {
+  Actif = "ACTIF"
+  Suspendu = "SUSPENDU"
+  Ferme = "FERME"
+}
+
+enum StatutAbonnement {
+  EnAttentePaiement = "EN_ATTENTE_PAIEMENT"
+  Actif = "ACTIF"
+  Expire = "EXPIRE"
+  Annule = "ANNULE"
+  Suspendu = "SUSPENDU"
+}
+
+enum TypeUtilisationAbonnement {
+  Reservation = "RESERVATION"
+  Consommation = "CONSOMMATION"
+  Liberation = "LIBERATION"
+  Ajustement = "AJUSTEMENT"
+}
+
+enum StatutDemandeCollecte {
+  EnAttentePaiement = "EN_ATTENTE_PAIEMENT"
+  Payee = "PAYEE"
+  EnAttenteAttribution = "EN_ATTENTE_ATTRIBUTION"
+  Attribuee = "ATTRIBUEE"
+  EnCours = "EN_COURS"
+  Terminee = "TERMINEE"
+  Echouee = "ECHOUEE"
+  Annulee = "ANNULEE"
+  Fermee = "FERMEE"
+}
+
+enum SensTransaction {
+  Credit = "CREDIT"
+  Debit = "DEBIT"
+}
+
+enum MethodePaiement {
+  MtnMomo = "MTN_MOMO"
+  OrangeMoney = "ORANGE_MONEY"
+  CarteBancaire = "CARTE_BANCAIRE"
+  VirementBancaire = "VIREMENT_BANCAIRE"
+  Portefeuille = "PORTEFEUILLE"
+  Especes = "ESPECES"
+}
+
+enum TypePaiement {
+  Collecte = "COLLECTE"
+  Abonnement = "ABONNEMENT"
+  RechargementPortefeuille = "RECHARGEMENT_PORTEFEUILLE"
+  Facture = "FACTURE"
+}
+
+enum StatutPaiement {
+  EnAttente = "EN_ATTENTE"
+  EnCours = "EN_COURS"
+  Paye = "PAYE"
+  Echoue = "ECHOUE"
+  Annule = "ANNULE"
+  Rembourse = "REMBOURSE"
+  RemboursePartiellement = "REMBOURSE_PARTIELLEMENT"
+}
+
+enum StatutAjustement {
+  EnAttente = "EN_ATTENTE"
+  Regle = "REGLE"
+  Annule = "ANNULE"
+}
+
+enum StatutMission {
+  Attribuee = "ATTRIBUEE"
+  EnCours = "EN_COURS"
+  Terminee = "TERMINEE"
+  Echouee = "ECHOUEE"
+  Annulee = "ANNULEE"
+}
+
+enum StatutDevis {
+  Brouillon = "BROUILLON"
+  EnAttenteValidation = "EN_ATTENTE_VALIDATION"
+  Valide = "VALIDE"
+  Refuse = "REFUSE"
+  Expire = "EXPIRE"
+}
+
+enum StatutFacture {
+  Emise = "EMISE"
+  Payee = "PAYEE"
+  PartiellementPayee = "PARTIELLEMENT_PAYEE"
+  EnRetard = "EN_RETARD"
+  Annulee = "ANNULEE"
+}
+
+enum StatutSignalement {
+  Soumis = "SOUMIS"
+  EnCoursVerification = "EN_COURS_VERIFICATION"
+  Valide = "VALIDE"
+  Rejete = "REJETE"
+  Nettoye = "NETTOYE"
+}
+
+enum StatutReclamationRecompense {
+  Reservee = "RESERVEE"
+  Utilisee = "UTILISEE"
+  Expiree = "EXPIREE"
+  Annulee = "ANNULEE"
+}
+
+model Utilisateur {
+  id                          BigInt                  @id @default(autoincrement())
+  uuid                        Uuid                    @unique @default(uuid())
+  nom                         VarChar(150)
+  email                       VarChar(255)?
+  telephone                   VarChar(30)             @unique
+  mot_de_passe                String
+  role                        RoleUtilisateur
+  statut                      StatutUtilisateur       @default(Actif)
+  photo                       String?
+  telephone_verifie           Boolean                 @default(false)
+  date_verification_telephone Timestamptz?
+  date_creation               Timestamptz             @default(now())
+  date_modification           Timestamptz             @default(now())
+
+  entreprise                  Entreprise?
+  portefeuille                Portefeuille?
+  points_collecte             PointCollecte[]
+  abonnements                 Abonnement[]
+  demandes_client             DemandeCollecte[]       @relation("ClientDemandes")
+  demandes_collecteur         DemandeCollecte[]       @relation("CollecteurDemandes")
+  missions_collecteur         MissionCollecte[]
+  paiements                   Paiement[]
+  signalements_auteur         Signalement[]           @relation("SignalementsAuteur")
+  signalements_valides        Signalement[]           @relation("SignalementsValidateur")
+  transactions_points         TransactionPoints[]
+  reclamations_recompenses    ReclamationRecompense[]
+  notifications               Notification[]
+  preference_notification     PreferenceNotification?
+  journaux_audit              JournalAudit[]
+  sessions                    SessionUtilisateur[]
+
+  @@index([role])
+  @@index([statut])
+  @@map("utilisateurs")
+}
+
+model Entreprise {
+  id                    BigInt            @id @default(autoincrement())
+  utilisateur_id        BigInt            @unique
+  nom                   VarChar(255)
+  raison_sociale        VarChar(255)?
+  numero_enregistrement VarChar(100)?
+  email                 VarChar(255)?
+  telephone             VarChar(30)?
+  statut                VarChar(30)
+  date_creation         Timestamptz       @default(now())
+  date_modification     Timestamptz       @default(now())
+
+  utilisateur           Utilisateur       @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  points_collecte       PointCollecte[]
+  portefeuille          Portefeuille?
+  demandes              DemandeCollecte[]
+  devis                 Devis[]
+  factures              Facture[]
+
+  @@map("entreprises")
+}
+
+model Portefeuille {
+  id                BigInt                    @id @default(autoincrement())
+  utilisateur_id    BigInt?                   @unique
+  entreprise_id     BigInt?                   @unique
+  solde             Numeric(15, 2)            @default(0)
+  devise            VarChar(3)                @default("XAF")
+  statut            StatutPortefeuille        @default(Actif)
+  date_creation     Timestamptz               @default(now())
+  date_modification Timestamptz               @default(now())
+
+  utilisateur       Utilisateur?              @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  entreprise        Entreprise?               @relation(
+    fields: [entreprise_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  transactions      TransactionPortefeuille[]
+
+  @@check(expression: "solde >= 0", name: "portefeuilles_solde_non_negatif")
+  @@check(expression: "(utilisateur_id IS NOT NULL AND entreprise_id IS NULL) OR (utilisateur_id IS NULL AND entreprise_id IS NOT NULL)", name: "portefeuilles_proprietaire_exclusif")
+  @@map("portefeuilles")
+}
+
+model PointCollecte {
+  id                  BigInt            @id @default(autoincrement())
+  utilisateur_id      BigInt?
+  entreprise_id       BigInt?
+  nom                 VarChar(150)
+  adresse             String
+  ville               VarChar(100)
+  quartier            VarChar(100)
+  latitude            Real?
+  longitude           Real?
+  instructions_acces  String?
+  jeton_qr            Uuid              @unique @default(uuid())
+  statut              VarChar(30)
+  date_creation       Timestamptz       @default(now())
+  date_modification   Timestamptz       @default(now())
+
+  utilisateur         Utilisateur?      @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  entreprise          Entreprise?       @relation(
+    fields: [entreprise_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  demandes            DemandeCollecte[]
+
+  @@index([utilisateur_id])
+  @@index([entreprise_id])
+  @@index([utilisateur_id], where: "(statut = 'ACTIF')", unique: true, name: "points_collecte_particulier_actif_unique")
+  @@map("points_collecte")
+}
+
+model CategorieDechet {
+  id                BigInt      @id @default(autoincrement())
+  nom               VarChar(150)
+  description       String?
+  statut            VarChar(30) @default("ACTIF")
+  date_creation     Timestamptz @default(now())
+  date_modification Timestamptz @default(now())
+
+  types_dechets     TypeDechet[]
+
+  @@index([nom])
+  @@index([statut])
+  @@map("categories_dechets")
+}
+
+model TypeDechet {
+  id                  BigInt            @id @default(autoincrement())
+  categorie_dechet_id BigInt
+  nom                 VarChar(150)
+  description         String?
+  statut              VarChar(30)       @default("ACTIF")
+  date_creation       Timestamptz       @default(now())
+  date_modification   Timestamptz       @default(now())
+
+  categorie           CategorieDechet   @relation(
+    fields: [categorie_dechet_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  tarifs              Tarif[]
+  demandes            DemandeCollecte[]
+  elements_collectes  ElementCollecte[]
+
+  @@index([categorie_dechet_id])
+  @@index([nom])
+  @@index([statut])
+  @@map("types_dechets")
+}
+
+model Zone {
+  id                BigInt            @id @default(autoincrement())
+  nom               VarChar(150)
+  ville             VarChar(100)
+  description       String?
+  latitude          Real?
+  longitude         Real?
+  statut            VarChar(30)       @default("ACTIF")
+  date_creation     Timestamptz       @default(now())
+  date_modification Timestamptz       @default(now())
+
+  tarifs            Tarif[]
+  demandes          DemandeCollecte[]
+
+  @@index([ville])
+  @@index([nom])
+  @@index([statut])
+  @@map("zones")
+}
+
+model Tarif {
+  id                BigInt         @id @default(autoincrement())
+  nom               VarChar(150)
+  type_dechet_id    BigInt
+  zone_id           BigInt
+  prix_base         Numeric(15, 2) @default(0)
+  prix_par_kg       Numeric(15, 2) @default(0)
+  prix_par_km       Numeric(15, 2) @default(0)
+  prix_minimum      Numeric(15, 2) @default(0)
+  statut            VarChar(30)    @default("ACTIF")
+  date_debut        Timestamptz
+  date_fin          Timestamptz?
+  date_creation     Timestamptz    @default(now())
+  date_modification Timestamptz    @default(now())
+
+  type_dechet       TypeDechet     @relation(
+    fields: [type_dechet_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  zone              Zone           @relation(
+    fields: [zone_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  @@index([type_dechet_id])
+  @@index([zone_id])
+  @@index([statut])
+  @@index([type_dechet_id, zone_id, statut])
+  @@check(expression: "prix_base >= 0 AND prix_par_kg >= 0 AND prix_par_km >= 0 AND prix_minimum >= 0", name: "tarifs_prix_non_negatifs")
+  @@check(expression: "date_fin IS NULL OR date_fin > date_debut", name: "tarifs_dates_coherentes")
+  @@map("tarifs")
+}
+
+model PlanAbonnement {
+  id                        BigInt         @id @default(autoincrement())
+  nom                       VarChar(150)
+  description               String?
+  prix                      Numeric(15, 2)
+  duree_jours               Int
+  nombre_collectes_incluses Int
+  poids_max_par_collecte    Numeric(10, 2)
+  statut                    VarChar(30)    @default("ACTIF")
+  date_creation             Timestamptz    @default(now())
+  date_modification         Timestamptz    @default(now())
+
+  abonnements               Abonnement[]
+
+  @@index([statut])
+  @@index([nom])
+  @@check(expression: "prix >= 0", name: "plans_prix_positif_ou_nul")
+  @@check(expression: "duree_jours > 0 AND nombre_collectes_incluses > 0 AND poids_max_par_collecte > 0", name: "plans_parametres_strictement_positifs")
+  @@map("plans_abonnement")
+}
+
+model Abonnement {
+  id                          BigInt                  @id @default(autoincrement())
+  utilisateur_id              BigInt
+  plan_abonnement_id          BigInt
+  prix                        Numeric(15, 2)
+  nombre_collectes_incluses   Int
+  nombre_collectes_utilisees  Int                     @default(0)
+  nombre_collectes_reservees  Int                     @default(0)
+  poids_max_par_collecte      Numeric(10, 2)
+  date_debut                  Timestamptz
+  date_fin                    Timestamptz
+  statut                      StatutAbonnement        @default(EnAttentePaiement)
+  date_creation               Timestamptz             @default(now())
+  date_modification           Timestamptz             @default(now())
+
+  utilisateur                 Utilisateur             @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  plan_abonnement             PlanAbonnement          @relation(
+    fields: [plan_abonnement_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  utilisations                UtilisationAbonnement[]
+  demandes                    DemandeCollecte[]
+  paiements                   Paiement[]
+
+  @@index([utilisateur_id])
+  @@index([plan_abonnement_id])
+  @@index([statut])
+  @@index([utilisateur_id], where: "(statut = 'ACTIF')", unique: true, name: "abonnements_utilisateur_actif_unique")
+  @@check(expression: "nombre_collectes_utilisees >= 0 AND nombre_collectes_reservees >= 0 AND (nombre_collectes_utilisees + nombre_collectes_reservees) <= nombre_collectes_incluses", name: "abonnements_quotas_valides")
+  @@check(expression: "date_fin > date_debut", name: "abonnements_dates_coherentes")
+  @@map("abonnements")
+}
+
+model UtilisationAbonnement {
+  id                  BigInt                    @id @default(autoincrement())
+  abonnement_id       BigInt
+  demande_collecte_id BigInt?
+  type                TypeUtilisationAbonnement
+  quantite            Int
+  statut              VarChar(30)
+  date_creation       Timestamptz               @default(now())
+
+  abonnement          Abonnement                @relation(
+    fields: [abonnement_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  demande_collecte    DemandeCollecte?          @relation(
+    fields: [demande_collecte_id],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  @@index([abonnement_id])
+  @@index([demande_collecte_id])
+  @@index([type])
+  @@map("utilisations_abonnement")
+}
+
+model DemandeCollecte {
+  id                      BigInt                  @id @default(autoincrement())
+  uuid                    Uuid                    @unique @default(uuid())
+  numero                  VarChar(50)             @unique
+  utilisateur_id          BigInt
+  entreprise_id           BigInt?
+  collecteur_id           BigInt?
+  point_collecte_id       BigInt?
+  type_dechet_id          BigInt
+  zone_id                 BigInt?
+  abonnement_id           BigInt?
+  adresse                 String
+  ville                   VarChar(100)
+  quartier                VarChar(100)
+  latitude                Real?
+  longitude               Real?
+  instructions_acces      String?
+  poids_estime            Numeric(10, 2)
+  poids_reel              Numeric(10, 2)?
+  prix_estime             Numeric(15, 2)
+  prix_final              Numeric(15, 2)?
+  details_prix            String?
+  statut                  StatutDemandeCollecte   @default(EnAttentePaiement)
+  date_collecte_souhaitee Timestamptz?
+  creneau_horaire         VarChar(50)?
+  date_attribution        Timestamptz?
+  date_realisation        Timestamptz?
+  date_creation           Timestamptz             @default(now())
+  date_modification       Timestamptz             @default(now())
+
+  client                  Utilisateur             @relation(
+    "ClientDemandes",
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  entreprise              Entreprise?             @relation(
+    fields: [entreprise_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  collecteur              Utilisateur?            @relation(
+    "CollecteurDemandes",
+    fields: [collecteur_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  point_collecte          PointCollecte?          @relation(
+    fields: [point_collecte_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  type_dechet             TypeDechet              @relation(
+    fields: [type_dechet_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  zone                    Zone?                   @relation(
+    fields: [zone_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  abonnement              Abonnement?             @relation(
+    fields: [abonnement_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  mission                 MissionCollecte?
+  paiements               Paiement[]
+  ajustements             AjustementPrix[]
+  utilisations_abonnement UtilisationAbonnement[]
+
+  @@index([utilisateur_id])
+  @@index([entreprise_id])
+  @@index([collecteur_id])
+  @@index([type_dechet_id])
+  @@index([zone_id])
+  @@index([abonnement_id])
+  @@index([statut])
+  @@index([date_creation])
+  @@check(expression: "poids_estime > 0", name: "demandes_poids_estime_positif")
+  @@check(expression: "poids_reel IS NULL OR poids_reel >= 0", name: "demandes_poids_reel_positif")
+  @@check(expression: "prix_estime >= 0", name: "demandes_prix_estime_positif")
+  @@check(expression: "prix_final IS NULL OR prix_final >= 0", name: "demandes_prix_final_positif")
+  @@map("demandes_collecte")
+}
+
+model TransactionPortefeuille {
+  id                BigInt          @id @default(autoincrement())
+  portefeuille_id   BigInt
+  montant           Numeric(15, 2)
+  sens              SensTransaction
+  motif             VarChar(255)
+  reference         VarChar(100)    @unique
+  solde_apres       Numeric(15, 2)?
+  date_creation     Timestamptz     @default(now())
+
+  portefeuille      Portefeuille    @relation(
+    fields: [portefeuille_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  @@index([portefeuille_id])
+  @@index([sens])
+  @@index([date_creation])
+  @@check(expression: "montant > 0", name: "transactions_portefeuille_montant_positif")
+  @@map("transactions_portefeuille")
+}
+
+model Paiement {
+  id                    BigInt          @id @default(autoincrement())
+  reference             VarChar(100)    @unique
+  utilisateur_id        BigInt
+  demande_collecte_id   BigInt?
+  abonnement_id         BigInt?
+  facture_id            BigInt?
+  montant               Numeric(15, 2)
+  devise                VarChar(3)      @default("XAF")
+  methode               MethodePaiement
+  type                  TypePaiement
+  statut                StatutPaiement  @default(EnAttente)
+  reference_fournisseur VarChar(255)?
+  donnees_fournisseur   String?
+  date_paiement         Timestamptz?
+  date_creation         Timestamptz     @default(now())
+  date_modification     Timestamptz     @default(now())
+
+  utilisateur           Utilisateur     @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  demande_collecte      DemandeCollecte? @relation(
+    fields: [demande_collecte_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  abonnement            Abonnement?     @relation(
+    fields: [abonnement_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  facture               Facture?        @relation(
+    fields: [facture_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  ajustements           AjustementPrix[]
+
+  @@index([utilisateur_id])
+  @@index([demande_collecte_id])
+  @@index([abonnement_id])
+  @@index([facture_id])
+  @@index([statut])
+  @@index([methode])
+  @@index([type])
+  @@check(expression: "montant > 0", name: "paiements_montant_positif")
+  @@map("paiements")
+}
+
+model AjustementPrix {
+  id                  BigInt            @id @default(autoincrement())
+  demande_collecte_id BigInt
+  paiement_id         BigInt?
+  montant             Numeric(15, 2)
+  sens                SensTransaction
+  motif               VarChar(255)
+  statut              StatutAjustement  @default(EnAttente)
+  date_reglement      Timestamptz?
+  date_creation       Timestamptz       @default(now())
+  date_modification   Timestamptz       @default(now())
+
+  demande_collecte    DemandeCollecte   @relation(
+    fields: [demande_collecte_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  paiement            Paiement?         @relation(
+    fields: [paiement_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  @@index([demande_collecte_id])
+  @@index([paiement_id])
+  @@index([statut])
+  @@check(expression: "montant > 0", name: "ajustements_montant_positif")
+  @@map("ajustements_prix")
+}
+
+model MissionCollecte {
+  id                  BigInt            @id @default(autoincrement())
+  demande_collecte_id BigInt            @unique
+  collecteur_id       BigInt
+  statut              StatutMission     @default(Attribuee)
+  jeton_qr            Uuid              @unique @default(uuid())
+  date_attribution    Timestamptz       @default(now())
+  date_acceptation    Timestamptz?
+  date_debut          Timestamptz?
+  date_fin            Timestamptz?
+  poids_reel_total    Numeric(10, 2)?
+  tri_respecte        Boolean           @default(true)
+  notes               String?
+  date_creation       Timestamptz       @default(now())
+  date_modification   Timestamptz       @default(now())
+
+  demande_collecte    DemandeCollecte   @relation(
+    fields: [demande_collecte_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  collecteur          Utilisateur       @relation(
+    fields: [collecteur_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  elements_collectes  ElementCollecte[]
+
+  @@index([collecteur_id])
+  @@index([statut])
+  @@check(expression: "date_fin IS NULL OR date_debut IS NULL OR date_fin >= date_debut", name: "missions_dates_coherentes")
+  @@map("missions_collecte")
+}
+
+model ElementCollecte {
+  id                  BigInt          @id @default(autoincrement())
+  mission_collecte_id BigInt
+  type_dechet_id      BigInt
+  poids               Numeric(10, 2)
+  volume_estime       Numeric(10, 2)?
+  notes               String?
+  date_creation       Timestamptz     @default(now())
+
+  mission_collecte    MissionCollecte @relation(
+    fields: [mission_collecte_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  type_dechet         TypeDechet      @relation(
+    fields: [type_dechet_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  @@index([mission_collecte_id])
+  @@index([type_dechet_id])
+  @@check(expression: "poids >= 0", name: "elements_collectes_poids_positif")
+  @@map("elements_collectes")
+}
+
+model Devis {
+  id                BigInt          @id @default(autoincrement())
+  numero            VarChar(50)     @unique
+  entreprise_id     BigInt
+  statut            StatutDevis     @default(Brouillon)
+  montant_ht        Numeric(15, 2)
+  montant_tva       Numeric(15, 2)  @default(0)
+  montant_ttc       Numeric(15, 2)
+  description       String?
+  date_emission     Timestamptz     @default(now())
+  date_validite     Timestamptz
+  date_creation     Timestamptz     @default(now())
+  date_modification Timestamptz     @default(now())
+
+  entreprise        Entreprise      @relation(
+    fields: [entreprise_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  facture           Facture?
+
+  @@index([entreprise_id])
+  @@index([statut])
+  @@check(expression: "montant_ht >= 0 AND montant_tva >= 0 AND montant_ttc >= montant_ht", name: "devis_montants_valides")
+  @@map("devis")
+}
+
+model Facture {
+  id                BigInt          @id @default(autoincrement())
+  numero            VarChar(50)     @unique
+  entreprise_id     BigInt
+  devis_id          BigInt?         @unique
+  statut            StatutFacture   @default(Emise)
+  montant_ht        Numeric(15, 2)
+  montant_tva       Numeric(15, 2)  @default(0)
+  montant_ttc       Numeric(15, 2)
+  date_emission     Timestamptz     @default(now())
+  date_echeance     Timestamptz
+  date_paiement     Timestamptz?
+  url_document      String?
+  date_creation     Timestamptz     @default(now())
+  date_modification Timestamptz     @default(now())
+
+  entreprise        Entreprise      @relation(
+    fields: [entreprise_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  devis             Devis?          @relation(
+    fields: [devis_id],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  paiements         Paiement[]
+
+  @@index([entreprise_id])
+  @@index([statut])
+  @@check(expression: "montant_ht >= 0 AND montant_tva >= 0 AND montant_ttc >= montant_ht", name: "factures_montants_valides")
+  @@map("factures")
+}
+
+model Signalement {
+  id                    BigInt              @id @default(autoincrement())
+  utilisateur_id        BigInt
+  description           String
+  adresse               String
+  ville                 VarChar(100)
+  quartier              VarChar(100)
+  latitude              Real?
+  longitude             Real?
+  photo                 String?
+  statut                StatutSignalement   @default(Soumis)
+  points_attribues      Int                 @default(0)
+  validateur_id         BigInt?
+  date_validation       Timestamptz?
+  notes_administrateur  String?
+  date_creation         Timestamptz         @default(now())
+  date_modification     Timestamptz         @default(now())
+
+  auteur                Utilisateur         @relation(
+    "SignalementsAuteur",
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  validateur            Utilisateur?        @relation(
+    "SignalementsValidateur",
+    fields: [validateur_id],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  transactions_points   TransactionPoints[]
+
+  @@index([utilisateur_id])
+  @@index([validateur_id])
+  @@index([statut])
+  @@index([ville])
+  @@check(expression: "points_attribues >= 0", name: "signalements_points_positifs")
+  @@map("signalements")
+}
+
+model Partenaire {
+  id                BigInt        @id @default(autoincrement())
+  nom               VarChar(255)
+  description       String?
+  logo              String?
+  site_web          VarChar(255)?
+  telephone         VarChar(30)?
+  email             VarChar(255)?
+  statut            VarChar(30)   @default("ACTIF")
+  date_creation     Timestamptz   @default(now())
+  date_modification Timestamptz   @default(now())
+
+  recompenses       Recompense[]
+
+  @@index([nom])
+  @@index([statut])
+  @@map("partenaires")
+}
+
+model Recompense {
+  id                BigInt                  @id @default(autoincrement())
+  partenaire_id     BigInt
+  titre             VarChar(255)
+  description       String?
+  points_requis     Int
+  stock             Int                     @default(0)
+  valeur_monetaire  Numeric(15, 2)?
+  statut            VarChar(30)             @default("ACTIF")
+  date_debut        Timestamptz?
+  date_fin          Timestamptz?
+  date_creation     Timestamptz             @default(now())
+  date_modification Timestamptz             @default(now())
+
+  partenaire        Partenaire              @relation(
+    fields: [partenaire_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  reclamations      ReclamationRecompense[]
+
+  @@index([partenaire_id])
+  @@index([statut])
+  @@check(expression: "points_requis > 0 AND stock >= 0", name: "recompenses_stock_et_points_valides")
+  @@map("recompenses")
+}
+
+model ReclamationRecompense {
+  id                  BigInt                      @id @default(autoincrement())
+  utilisateur_id      BigInt
+  recompense_id       BigInt
+  points_utilises     Int
+  code_reclamation    VarChar(100)                @unique
+  statut              StatutReclamationRecompense @default(Reservee)
+  date_utilisation    Timestamptz?
+  date_expiration     Timestamptz
+  date_creation       Timestamptz                 @default(now())
+  date_modification   Timestamptz                 @default(now())
+
+  utilisateur         Utilisateur                 @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  recompense          Recompense                  @relation(
+    fields: [recompense_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  transactions_points TransactionPoints[]
+
+  @@index([utilisateur_id])
+  @@index([recompense_id])
+  @@index([statut])
+  @@check(expression: "points_utilises > 0", name: "reclamations_points_positifs")
+  @@map("reclamations_recompenses")
+}
+
+model TransactionPoints {
+  id                        BigInt                 @id @default(autoincrement())
+  utilisateur_id            BigInt
+  points                    Int
+  sens                      SensTransaction
+  motif                     VarChar(255)
+  signalement_id            BigInt?
+  reclamation_recompense_id BigInt?
+  date_creation             Timestamptz            @default(now())
+
+  utilisateur               Utilisateur            @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  signalement               Signalement?           @relation(
+    fields: [signalement_id],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  reclamation_recompense    ReclamationRecompense? @relation(
+    fields: [reclamation_recompense_id],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  @@index([utilisateur_id])
+  @@index([signalement_id])
+  @@index([reclamation_recompense_id])
+  @@check(expression: "points > 0", name: "transactions_points_positifs")
+  @@map("transactions_points")
+}
+
+model Notification {
+  id             BigInt      @id @default(autoincrement())
+  utilisateur_id BigInt
+  titre          VarChar(255)
+  message        String
+  type           VarChar(50)
+  lu             Boolean     @default(false)
+  donnees        String?
+  date_lecture   Timestamptz?
+  date_creation  Timestamptz @default(now())
+
+  utilisateur    Utilisateur @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@index([utilisateur_id])
+  @@index([lu])
+  @@map("notifications")
+}
+
+model PreferenceNotification {
+  id                BigInt      @id @default(autoincrement())
+  utilisateur_id    BigInt      @unique
+  email_actif       Boolean     @default(true)
+  sms_actif         Boolean     @default(true)
+  push_actif        Boolean     @default(true)
+  whatsapp_actif    Boolean     @default(false)
+  date_creation     Timestamptz @default(now())
+  date_modification Timestamptz @default(now())
+
+  utilisateur       Utilisateur @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@map("preferences_notification")
+}
+
+model JournalAudit {
+  id                BigInt      @id @default(autoincrement())
+  utilisateur_id    BigInt?
+  action            VarChar(100)
+  entite            VarChar(100)
+  entite_id         BigInt?
+  details           String?
+  adresse_ip        VarChar(50)?
+  agent_utilisateur String?
+  date_creation     Timestamptz @default(now())
+
+  utilisateur       Utilisateur? @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  @@index([utilisateur_id])
+  @@index([entite, entite_id])
+  @@index([action])
+  @@index([date_creation])
+  @@map("journaux_audit")
+}
+
+model CleIdempotence {
+  id              BigInt      @id @default(autoincrement())
+  cle             VarChar(255) @unique
+  methode_http    VarChar(10)
+  chemin_uri      VarChar(255)
+  code_statut     Int?
+  reponse         String?
+  date_expiration Timestamptz
+  date_creation   Timestamptz @default(now())
+
+  @@index([date_expiration])
+  @@map("cles_idempotence")
+}
+
+model SessionUtilisateur {
+  id                  BigInt      @id @default(autoincrement())
+  utilisateur_id      BigInt
+  jeton_refresh_hash  String      @unique
+  adresse_ip          VarChar(50)?
+  agent_utilisateur   String?
+  revoque             Boolean     @default(false)
+  date_expiration     Timestamptz
+  date_creation       Timestamptz @default(now())
+  date_modification   Timestamptz @default(now())
+
+  utilisateur         Utilisateur @relation(
+    fields: [utilisateur_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@index([utilisateur_id])
+  @@index([date_expiration])
+  @@map("sessions_utilisateur")
+}

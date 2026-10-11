@@ -1,0 +1,729 @@
+[
+  {
+    "id": "dropTable.tests",
+    "label": "Drop table \"tests\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "tests"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"tests\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"tests\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop table \"tests\"",
+        "sql": "DROP TABLE \"public\".\"tests\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"tests\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"tests\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.entreprises",
+    "label": "Create table \"entreprises\"",
+    "summary": "Creates table \"entreprises\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "entreprises"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"entreprises\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"entreprises\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"entreprises\"",
+        "sql": "CREATE TABLE \"public\".\"entreprises\" (\n  \"date_creation\" timestamptz DEFAULT (now()) NOT NULL,\n  \"date_modification\" timestamptz DEFAULT (now()) NOT NULL,\n  \"email\" character varying(255),\n  \"id\" BIGSERIAL NOT NULL,\n  \"nom\" character varying(255) NOT NULL,\n  \"numero_enregistrement\" character varying(100),\n  \"raison_sociale\" character varying(255),\n  \"statut\" character varying(30) NOT NULL,\n  \"telephone\" character varying(30),\n  \"utilisateur_id\" int8 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"entreprises\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"entreprises\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.points_collecte",
+    "label": "Create table \"points_collecte\"",
+    "summary": "Creates table \"points_collecte\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "points_collecte"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"points_collecte\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"points_collecte\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"points_collecte\"",
+        "sql": "CREATE TABLE \"public\".\"points_collecte\" (\n  \"adresse\" text NOT NULL,\n  \"date_creation\" timestamptz DEFAULT (now()) NOT NULL,\n  \"date_modification\" timestamptz DEFAULT (now()) NOT NULL,\n  \"entreprise_id\" int8,\n  \"id\" BIGSERIAL NOT NULL,\n  \"instructions_acces\" text,\n  \"jeton_qr\" uuid NOT NULL,\n  \"latitude\" float4,\n  \"longitude\" float4,\n  \"nom\" character varying(150) NOT NULL,\n  \"quartier\" character varying(100) NOT NULL,\n  \"statut\" character varying(30) NOT NULL,\n  \"utilisateur_id\" int8,\n  \"ville\" character varying(100) NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"points_collecte\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"points_collecte\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.portefeuilles",
+    "label": "Create table \"portefeuilles\"",
+    "summary": "Creates table \"portefeuilles\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "portefeuilles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"portefeuilles\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"portefeuilles\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"portefeuilles\"",
+        "sql": "CREATE TABLE \"public\".\"portefeuilles\" (\n  \"date_creation\" timestamptz DEFAULT (now()) NOT NULL,\n  \"date_modification\" timestamptz DEFAULT (now()) NOT NULL,\n  \"devise\" character varying(3) DEFAULT 'XAF' NOT NULL,\n  \"id\" BIGSERIAL NOT NULL,\n  \"solde\" numeric(15,2) DEFAULT '0'::numeric(15,2) NOT NULL,\n  \"statut\" text DEFAULT 'ACTIF' NOT NULL,\n  \"utilisateur_id\" int8 NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"portefeuilles_statut_check_567b153d\" CHECK (\"statut\" IN ('ACTIF', 'SUSPENDU', 'FERME'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"portefeuilles\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"portefeuilles\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.utilisateurs",
+    "label": "Create table \"utilisateurs\"",
+    "summary": "Creates table \"utilisateurs\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "utilisateurs"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"utilisateurs\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"utilisateurs\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"utilisateurs\"",
+        "sql": "CREATE TABLE \"public\".\"utilisateurs\" (\n  \"date_creation\" timestamptz DEFAULT (now()) NOT NULL,\n  \"date_modification\" timestamptz DEFAULT (now()) NOT NULL,\n  \"date_verification_telephone\" timestamptz,\n  \"email\" character varying(255),\n  \"id\" BIGSERIAL NOT NULL,\n  \"mot_de_passe\" text NOT NULL,\n  \"nom\" character varying(150) NOT NULL,\n  \"photo\" text,\n  \"role\" text NOT NULL,\n  \"statut\" text DEFAULT 'ACTIF' NOT NULL,\n  \"telephone\" character varying(30) NOT NULL,\n  \"telephone_verifie\" bool DEFAULT false NOT NULL,\n  \"uuid\" uuid NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"utilisateurs_role_check_3cb37cfc\" CHECK (\"role\" IN ('PARTICULIER', 'ENTREPRISE', 'COLLECTEUR', 'ADMINISTRATEUR')),\n  CONSTRAINT \"utilisateurs_statut_check_65d85a93\" CHECK (\"statut\" IN ('ACTIF', 'SUSPENDU', 'INACTIF'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"utilisateurs\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"utilisateurs\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.entreprises.entreprises_utilisateur_id_key",
+    "label": "Add unique constraint on \"entreprises\" (utilisateur_id)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "entreprises_utilisateur_id_key",
+        "table": "entreprises"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"entreprises_utilisateur_id_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "entreprises_utilisateur_id_key",
+          "public",
+          "\"public\".\"entreprises\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"entreprises_utilisateur_id_key\"",
+        "sql": "ALTER TABLE \"public\".\"entreprises\" ADD CONSTRAINT \"entreprises_utilisateur_id_key\" UNIQUE (\"utilisateur_id\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"entreprises_utilisateur_id_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "entreprises_utilisateur_id_key",
+          "public",
+          "\"public\".\"entreprises\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.points_collecte.points_collecte_jeton_qr_key",
+    "label": "Add unique constraint on \"points_collecte\" (jeton_qr)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "points_collecte_jeton_qr_key",
+        "table": "points_collecte"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"points_collecte_jeton_qr_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "points_collecte_jeton_qr_key",
+          "public",
+          "\"public\".\"points_collecte\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"points_collecte_jeton_qr_key\"",
+        "sql": "ALTER TABLE \"public\".\"points_collecte\" ADD CONSTRAINT \"points_collecte_jeton_qr_key\" UNIQUE (\"jeton_qr\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"points_collecte_jeton_qr_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "points_collecte_jeton_qr_key",
+          "public",
+          "\"public\".\"points_collecte\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.portefeuilles.portefeuilles_utilisateur_id_key",
+    "label": "Add unique constraint on \"portefeuilles\" (utilisateur_id)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "portefeuilles_utilisateur_id_key",
+        "table": "portefeuilles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"portefeuilles_utilisateur_id_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "portefeuilles_utilisateur_id_key",
+          "public",
+          "\"public\".\"portefeuilles\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"portefeuilles_utilisateur_id_key\"",
+        "sql": "ALTER TABLE \"public\".\"portefeuilles\" ADD CONSTRAINT \"portefeuilles_utilisateur_id_key\" UNIQUE (\"utilisateur_id\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"portefeuilles_utilisateur_id_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "portefeuilles_utilisateur_id_key",
+          "public",
+          "\"public\".\"portefeuilles\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.utilisateurs.utilisateurs_uuid_key",
+    "label": "Add unique constraint on \"utilisateurs\" (uuid)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "utilisateurs_uuid_key",
+        "table": "utilisateurs"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"utilisateurs_uuid_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "utilisateurs_uuid_key",
+          "public",
+          "\"public\".\"utilisateurs\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"utilisateurs_uuid_key\"",
+        "sql": "ALTER TABLE \"public\".\"utilisateurs\" ADD CONSTRAINT \"utilisateurs_uuid_key\" UNIQUE (\"uuid\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"utilisateurs_uuid_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "utilisateurs_uuid_key",
+          "public",
+          "\"public\".\"utilisateurs\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.utilisateurs.utilisateurs_telephone_key",
+    "label": "Add unique constraint on \"utilisateurs\" (telephone)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "utilisateurs_telephone_key",
+        "table": "utilisateurs"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"utilisateurs_telephone_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "utilisateurs_telephone_key",
+          "public",
+          "\"public\".\"utilisateurs\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"utilisateurs_telephone_key\"",
+        "sql": "ALTER TABLE \"public\".\"utilisateurs\" ADD CONSTRAINT \"utilisateurs_telephone_key\" UNIQUE (\"telephone\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"utilisateurs_telephone_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "utilisateurs_telephone_key",
+          "public",
+          "\"public\".\"utilisateurs\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.points_collecte.points_collecte_entreprise_id_idx_1d660c37",
+    "label": "Create index \"points_collecte_entreprise_id_idx_1d660c37\" on \"points_collecte\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "points_collecte_entreprise_id_idx_1d660c37",
+        "table": "points_collecte"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"points_collecte_entreprise_id_idx_1d660c37\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"points_collecte_entreprise_id_idx_1d660c37\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"points_collecte_entreprise_id_idx_1d660c37\"",
+        "sql": "CREATE INDEX \"points_collecte_entreprise_id_idx_1d660c37\" ON \"public\".\"points_collecte\" (\"entreprise_id\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"points_collecte_entreprise_id_idx_1d660c37\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"points_collecte_entreprise_id_idx_1d660c37\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.points_collecte.points_collecte_utilisateur_id_idx_afedb02c",
+    "label": "Create index \"points_collecte_utilisateur_id_idx_afedb02c\" on \"points_collecte\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "points_collecte_utilisateur_id_idx_afedb02c",
+        "table": "points_collecte"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"points_collecte_utilisateur_id_idx_afedb02c\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"points_collecte_utilisateur_id_idx_afedb02c\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"points_collecte_utilisateur_id_idx_afedb02c\"",
+        "sql": "CREATE INDEX \"points_collecte_utilisateur_id_idx_afedb02c\" ON \"public\".\"points_collecte\" (\"utilisateur_id\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"points_collecte_utilisateur_id_idx_afedb02c\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"points_collecte_utilisateur_id_idx_afedb02c\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.utilisateurs.utilisateurs_role_idx_2c1ddf83",
+    "label": "Create index \"utilisateurs_role_idx_2c1ddf83\" on \"utilisateurs\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "utilisateurs_role_idx_2c1ddf83",
+        "table": "utilisateurs"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"utilisateurs_role_idx_2c1ddf83\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"utilisateurs_role_idx_2c1ddf83\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"utilisateurs_role_idx_2c1ddf83\"",
+        "sql": "CREATE INDEX \"utilisateurs_role_idx_2c1ddf83\" ON \"public\".\"utilisateurs\" (\"role\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"utilisateurs_role_idx_2c1ddf83\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"utilisateurs_role_idx_2c1ddf83\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.utilisateurs.utilisateurs_statut_idx_9bf78e02",
+    "label": "Create index \"utilisateurs_statut_idx_9bf78e02\" on \"utilisateurs\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "utilisateurs_statut_idx_9bf78e02",
+        "table": "utilisateurs"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"utilisateurs_statut_idx_9bf78e02\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"utilisateurs_statut_idx_9bf78e02\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"utilisateurs_statut_idx_9bf78e02\"",
+        "sql": "CREATE INDEX \"utilisateurs_statut_idx_9bf78e02\" ON \"public\".\"utilisateurs\" (\"statut\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"utilisateurs_statut_idx_9bf78e02\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"utilisateurs_statut_idx_9bf78e02\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.entreprises.entreprises_utilisateur_id_fkey",
+    "label": "Add foreign key \"entreprises_utilisateur_id_fkey\" on \"entreprises\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "entreprises_utilisateur_id_fkey",
+        "table": "entreprises"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"entreprises_utilisateur_id_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "entreprises_utilisateur_id_fkey",
+          "public",
+          "\"public\".\"entreprises\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"entreprises_utilisateur_id_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"entreprises\"\nADD CONSTRAINT \"entreprises_utilisateur_id_fkey\"\nFOREIGN KEY (\"utilisateur_id\")\nREFERENCES \"public\".\"utilisateurs\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"entreprises_utilisateur_id_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "entreprises_utilisateur_id_fkey",
+          "public",
+          "\"public\".\"entreprises\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.points_collecte.points_collecte_utilisateur_id_fkey",
+    "label": "Add foreign key \"points_collecte_utilisateur_id_fkey\" on \"points_collecte\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "points_collecte_utilisateur_id_fkey",
+        "table": "points_collecte"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"points_collecte_utilisateur_id_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "points_collecte_utilisateur_id_fkey",
+          "public",
+          "\"public\".\"points_collecte\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"points_collecte_utilisateur_id_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"points_collecte\"\nADD CONSTRAINT \"points_collecte_utilisateur_id_fkey\"\nFOREIGN KEY (\"utilisateur_id\")\nREFERENCES \"public\".\"utilisateurs\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"points_collecte_utilisateur_id_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "points_collecte_utilisateur_id_fkey",
+          "public",
+          "\"public\".\"points_collecte\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.points_collecte.points_collecte_entreprise_id_fkey",
+    "label": "Add foreign key \"points_collecte_entreprise_id_fkey\" on \"points_collecte\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "points_collecte_entreprise_id_fkey",
+        "table": "points_collecte"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"points_collecte_entreprise_id_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "points_collecte_entreprise_id_fkey",
+          "public",
+          "\"public\".\"points_collecte\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"points_collecte_entreprise_id_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"points_collecte\"\nADD CONSTRAINT \"points_collecte_entreprise_id_fkey\"\nFOREIGN KEY (\"entreprise_id\")\nREFERENCES \"public\".\"entreprises\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"points_collecte_entreprise_id_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "points_collecte_entreprise_id_fkey",
+          "public",
+          "\"public\".\"points_collecte\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.portefeuilles.portefeuilles_utilisateur_id_fkey",
+    "label": "Add foreign key \"portefeuilles_utilisateur_id_fkey\" on \"portefeuilles\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "portefeuilles_utilisateur_id_fkey",
+        "table": "portefeuilles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"portefeuilles_utilisateur_id_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "portefeuilles_utilisateur_id_fkey",
+          "public",
+          "\"public\".\"portefeuilles\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"portefeuilles_utilisateur_id_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"portefeuilles\"\nADD CONSTRAINT \"portefeuilles_utilisateur_id_fkey\"\nFOREIGN KEY (\"utilisateur_id\")\nREFERENCES \"public\".\"utilisateurs\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"portefeuilles_utilisateur_id_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "portefeuilles_utilisateur_id_fkey",
+          "public",
+          "\"public\".\"portefeuilles\""
+        ]
+      }
+    ]
+  }
+]
