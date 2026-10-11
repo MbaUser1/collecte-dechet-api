@@ -1,14 +1,34 @@
 import { Injectable } from '@nestjs/common';
-import { scrypt, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
-import { promisify } from 'node:util';
+import {
+  scrypt,
+  type ScryptOptions,
+  randomBytes,
+  timingSafeEqual,
+  createHash,
+} from 'node:crypto';
 
-const scryptAsync = promisify(scrypt);
+function deriverCleScrypt(
+  motDePasse: string,
+  sel: string,
+  longueurCle: number,
+  options: ScryptOptions,
+): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    scrypt(motDePasse, sel, longueurCle, options, (err, derivedKey) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(derivedKey);
+      }
+    });
+  });
+}
 
 @Injectable()
 export class HachageService {
   private readonly longueurCle = 64;
   // Paramètres de dérivation scrypt recommandés par l'OWASP
-  private readonly scryptOptions = {
+  private readonly scryptOptions: ScryptOptions = {
     N: 16384, // Coût CPU/mémoire
     r: 8,     // Taille des blocs
     p: 1,     // Parallélisme
@@ -21,7 +41,12 @@ export class HachageService {
    */
   async hacherMotDePasse(motDePasse: string): Promise<string> {
     const sel = randomBytes(16).toString('hex');
-    const cleDerivee = (await scryptAsync(motDePasse, sel, this.longueurCle, this.scryptOptions)) as Buffer;
+    const cleDerivee = await deriverCleScrypt(
+      motDePasse,
+      sel,
+      this.longueurCle,
+      this.scryptOptions,
+    );
     return `scrypt:${sel}:${cleDerivee.toString('hex')}`;
   }
 
@@ -36,7 +61,12 @@ export class HachageService {
 
     const [, sel, cleHex] = parties;
     const cleBuffer = Buffer.from(cleHex, 'hex');
-    const cleCalculee = (await scryptAsync(motDePasse, sel, this.longueurCle, this.scryptOptions)) as Buffer;
+    const cleCalculee = await deriverCleScrypt(
+      motDePasse,
+      sel,
+      this.longueurCle,
+      this.scryptOptions,
+    );
 
     if (cleBuffer.length !== cleCalculee.length) {
       return false;
