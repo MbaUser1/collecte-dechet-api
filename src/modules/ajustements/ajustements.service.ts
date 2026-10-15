@@ -126,23 +126,25 @@ export class AjustementsService {
         // VERROUILLAGE CONCURRENTIEL ET OCC SUR LE PAIEMENT AVANT TOUTE TRANSACTION FINANCIÈRE :
         // La mise à jour conditionnelle verrouille la ligne du paiement dans PostgreSQL et valide que
         // le statut et la date_modification n'ont pas changé.
-        // Si deux opérations concurrentes tentent un remboursement simultané :
-        // - L'opération 1 acquiert le verrou exclusif sur la ligne et met à jour statut et date_modification.
-        // - L'opération 2 est mise en attente du verrou.
-        // - Dès le commit de l'opération 1, l'opération 2 réévalue son WHERE : date_modification (et statut)
-        //   ayant changé, 0 ligne n'est affectée.
-        // - L'opération 2 lève immédiatement ConflictException sans créditer le portefeuille ni créer d'ajustement.
+        // Protection contre les timestamps identiques/nuls : on impose un timestamp strictement supérieur
+        // et une clause explicite (eq ou isNull) pour éliminer toute dépendance fragile à la granularité d'horloge.
+        const dateSnapshot = paiementOrigine.date_modification;
+        const dateRef = dateSnapshot ? new Date(dateSnapshot).getTime() : Date.now();
+        const nouveauDate = new Date(Math.max(Date.now(), dateRef + 1));
+
         const paiementMaj = await tx.orm.public.Paiement
           .where((p: any) => {
             let predicate = p.id.eq(paiementOrigineId).and(p.statut.eq(paiementOrigine.statut));
-            if (paiementOrigine.date_modification) {
-              predicate = predicate.and(p.date_modification.eq(paiementOrigine.date_modification));
+            if (dateSnapshot) {
+              predicate = predicate.and(p.date_modification.eq(dateSnapshot));
+            } else {
+              predicate = predicate.and(p.date_modification.isNull());
             }
             return predicate;
           })
           .update({
             statut: nouveauStatutPaiement as any,
-            date_modification: new Date(),
+            date_modification: nouveauDate,
           } as any);
 
         if (!paiementMaj) {

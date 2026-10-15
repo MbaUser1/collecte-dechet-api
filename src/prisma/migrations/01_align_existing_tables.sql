@@ -6,20 +6,25 @@
 
 BEGIN;
 
--- 1. Contrôle préalable sur la table portefeuilles
--- Vérification qu'aucun solde existant n'est négatif avant pose de la contrainte
+-- 1. Contrôle préalable sur les tables et colonnes existantes
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM public.portefeuilles WHERE solde < 0) THEN
-    RAISE EXCEPTION 'PRÉREQUIS ÉCHOUÉ : Des portefeuilles ont un solde négatif. Régularisation manuelle requise.';
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'portefeuilles') THEN
+    RAISE EXCEPTION 'PRÉREQUIS ÉCHOUÉ : La table public.portefeuilles est introuvable.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'entreprises') THEN
+    RAISE EXCEPTION 'PRÉREQUIS ÉCHOUÉ : La table public.entreprises est introuvable.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'utilisateurs') THEN
+    RAISE EXCEPTION 'PRÉREQUIS ÉCHOUÉ : La table public.utilisateurs est introuvable.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'points_collecte') THEN
+    RAISE EXCEPTION 'PRÉREQUIS ÉCHOUÉ : La table public.points_collecte est introuvable.';
   END IF;
 
-  IF EXISTS (
-    SELECT 1 FROM public.portefeuilles 
-    WHERE (utilisateur_id IS NULL AND entreprise_id IS NULL) 
-       OR (utilisateur_id IS NOT NULL AND entreprise_id IS NOT NULL)
-  ) THEN
-    RAISE EXCEPTION 'PRÉREQUIS ÉCHOUÉ : Des portefeuilles violent la règle de propriétaire exclusif. Régularisation manuelle requise.';
+  -- Vérification qu'aucun solde existant n'est négatif avant pose de la contrainte
+  IF EXISTS (SELECT 1 FROM public.portefeuilles WHERE solde < 0) THEN
+    RAISE EXCEPTION 'PRÉREQUIS ÉCHOUÉ : Des portefeuilles ont un solde négatif. Régularisation manuelle requise.';
   END IF;
 END $$;
 
@@ -28,10 +33,37 @@ END $$;
 ALTER TABLE public.portefeuilles 
   ALTER COLUMN utilisateur_id DROP NOT NULL;
 
--- B. Ajout de la colonne entreprise_id avec contrainte de clé étrangère RESTRICT vers entreprises(id)
-ALTER TABLE public.portefeuilles 
-  ADD COLUMN IF NOT EXISTS entreprise_id bigint;
+-- B. Création de la colonne entreprise_id et validation du type si préexistante
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'portefeuilles' AND column_name = 'entreprise_id'
+  ) THEN
+    ALTER TABLE public.portefeuilles ADD COLUMN entreprise_id bigint;
+  ELSE
+    IF (
+      SELECT udt_name FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'portefeuilles' AND column_name = 'entreprise_id'
+    ) NOT IN ('int8', 'int4') THEN
+      RAISE EXCEPTION 'INCOMPATIBILITÉ DÉTECTÉE : La colonne portefeuilles.entreprise_id existe mais n''est pas de type entier (bigint).';
+    END IF;
+  END IF;
+END $$;
 
+-- C. Contrôle de cohérence sur l'exclusivité du propriétaire (exécuté après garantie d'existence de entreprise_id)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.portefeuilles 
+    WHERE (utilisateur_id IS NULL AND entreprise_id IS NULL) 
+       OR (utilisateur_id IS NOT NULL AND entreprise_id IS NOT NULL)
+  ) THEN
+    RAISE EXCEPTION 'PRÉREQUIS ÉCHOUÉ : Des portefeuilles violent la règle de propriétaire exclusif (utilisateur_id / entreprise_id). Régularisation requise.';
+  END IF;
+END $$;
+
+-- D. Pose de la contrainte UNIQUE sur entreprise_id
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -41,7 +73,11 @@ BEGIN
     ALTER TABLE public.portefeuilles 
       ADD CONSTRAINT portefeuilles_entreprise_id_key UNIQUE (entreprise_id);
   END IF;
+END $$;
 
+-- E. Clé étrangère entreprise_id -> entreprises(id) ON DELETE RESTRICT (préservation historique financier)
+DO $$
+BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint 
     WHERE conname = 'portefeuilles_entreprise_id_fkey' AND conrelid = 'public.portefeuilles'::regclass
@@ -52,7 +88,29 @@ BEGIN
   END IF;
 END $$;
 
--- C. Ajout de la contrainte CHECK sur le solde non négatif
+-- F. Alignement de la clé étrangère utilisateur_id -> utilisateurs(id) ON DELETE RESTRICT
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'portefeuilles_utilisateur_id_fkey' AND conrelid = 'public.portefeuilles'::regclass
+      AND confdeltype != 'r'
+  ) THEN
+    ALTER TABLE public.portefeuilles DROP CONSTRAINT portefeuilles_utilisateur_id_fkey;
+    ALTER TABLE public.portefeuilles 
+      ADD CONSTRAINT portefeuilles_utilisateur_id_fkey 
+      FOREIGN KEY (utilisateur_id) REFERENCES public.utilisateurs(id) ON DELETE RESTRICT;
+  ELSIF NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'portefeuilles_utilisateur_id_fkey' AND conrelid = 'public.portefeuilles'::regclass
+  ) THEN
+    ALTER TABLE public.portefeuilles 
+      ADD CONSTRAINT portefeuilles_utilisateur_id_fkey 
+      FOREIGN KEY (utilisateur_id) REFERENCES public.utilisateurs(id) ON DELETE RESTRICT;
+  END IF;
+END $$;
+
+-- G. Ajout de la contrainte CHECK sur le solde non négatif
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -64,7 +122,7 @@ BEGIN
   END IF;
 END $$;
 
--- D. Ajout de la contrainte CHECK d'exclusivité de propriétaire (particulier OU entreprise)
+-- H. Ajout de la contrainte CHECK d'exclusivité de propriétaire (particulier OU entreprise)
 DO $$
 BEGIN
   IF NOT EXISTS (

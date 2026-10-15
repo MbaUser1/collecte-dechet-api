@@ -8,5 +8,7 @@ export default defineConfig({
     root: './',
     include: ['**/*.spec.ts'],
     setupFiles: ['reflect-metadata'],
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
 });

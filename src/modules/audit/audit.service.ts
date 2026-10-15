@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { FiltreAuditDto } from './dto/filtre-audit.dto.js';
 import { ResultatPagine } from '../../common/dto/pagination-query.dto.js';
 import { serialiserDonnees } from '../../common/utils/serializer.util.js';
+import { compterLignes } from '../../common/utils/compteur.util.js';
 
 const CLES_SENSIBLES = [
   'mot_de_passe',
@@ -77,11 +78,16 @@ export class AuditService {
         entite_id: entiteId ?? null,
         details: detailsFormates,
         adresse_ip: adresseIp ? adresseIp.substring(0, 50) : null,
-        agent_utilisateur: agentUtilisateur ? agentUtilisateur.substring(0, 500) : null,
+        agent_utilisateur: agentUtilisateur
+          ? agentUtilisateur.substring(0, 500)
+          : null,
       });
     } catch (erreur) {
       // L'audit ne doit pas bloquer une opération métier critique, mais on consigne l'erreur
-      this.logger.error(`Erreur lors de l'enregistrement d'audit: ${action} sur ${entite}`, erreur);
+      this.logger.error(
+        `Erreur lors de l'enregistrement d'audit: ${action} sur ${entite}`,
+        erreur,
+      );
     }
   }
 
@@ -96,13 +102,19 @@ export class AuditService {
     let requete = this.prisma.orm.public.JournalAudit;
 
     if (filtre.action) {
-      requete = requete.where((j: any) => j.action.eq(filtre.action as any)) as any;
+      requete = requete.where((j: any) =>
+        j.action.eq(filtre.action as any),
+      ) as any;
     }
     if (filtre.entite) {
-      requete = requete.where((j: any) => j.entite.eq(filtre.entite as any)) as any;
+      requete = requete.where((j: any) =>
+        j.entite.eq(filtre.entite as any),
+      ) as any;
     }
     if (filtre.utilisateur_id) {
-      requete = requete.where((j: any) => j.utilisateur_id.eq(BigInt(filtre.utilisateur_id!))) as any;
+      requete = requete.where((j: any) =>
+        j.utilisateur_id.eq(BigInt(filtre.utilisateur_id!)),
+      ) as any;
     }
 
     const [elements, totalCount] = await Promise.all([
@@ -111,16 +123,23 @@ export class AuditService {
         .offset(offset)
         .limit(limite)
         .all(),
-      Promise.resolve(requete.count()),
+
+      compterLignes(requete),
     ]);
 
     const total = Number(totalCount);
 
     const formattedElements = elements.map((item: any) => ({
       ...serialiserDonnees(item),
-      details: item.details ? (() => {
-        try { return JSON.parse(item.details); } catch { return item.details; }
-      })() : null,
+      details: item.details
+        ? (() => {
+            try {
+              return JSON.parse(item.details);
+            } catch {
+              return item.details;
+            }
+          })()
+        : null,
     }));
 
     return {

@@ -9,6 +9,7 @@ import { FiltreNotificationsDto } from './dto/filtre-notifications.dto.js';
 import { ModifierPreferencesDto } from './dto/modifier-preferences.dto.js';
 import { ResultatPagine } from '../../common/dto/pagination-query.dto.js';
 import { serialiserDonnees } from '../../common/utils/serializer.util.js';
+import { compterLignes } from '../../common/utils/compteur.util.js';
 
 @Injectable()
 export class NotificationsService {
@@ -74,7 +75,7 @@ export class NotificationsService {
         .offset(offset)
         .limit(limite)
         .all(),
-      Promise.resolve(requete.count()),
+      compterLignes(requete),
     ]);
 
     const total = Number(totalCount);
@@ -107,15 +108,11 @@ export class NotificationsService {
    * Compte le nombre de notifications non lues pour l'utilisateur connecté.
    */
   async compterNonLues(utilisateurId: bigint): Promise<{ non_lues: number }> {
-    const count = Number(
-      await Promise.resolve(
-        this.prisma.orm.public.Notification
-          .where((n) => n.utilisateur_id.eq(utilisateurId))
-          .where((n) => n.lu.eq(false))
-          .count(),
-      ),
-    );
+    const requete = this.prisma.orm.public.Notification
+      .where((n: any) => n.utilisateur_id.eq(utilisateurId))
+      .where((n: any) => n.lu.eq(false));
 
+    const count = await compterLignes(requete);
     return { non_lues: count };
   }
 
@@ -153,14 +150,11 @@ export class NotificationsService {
    * Marque toutes les notifications non lues de l'utilisateur comme lues.
    */
   async marquerToutesCommeLues(utilisateurId: bigint): Promise<{ message: string; compteurs_mis_a_jour: number }> {
-    const nonLues = Number(
-      await Promise.resolve(
-        this.prisma.orm.public.Notification
-          .where((n) => n.utilisateur_id.eq(utilisateurId))
-          .where((n) => n.lu.eq(false))
-          .count(),
-      ),
-    );
+    const requete = this.prisma.orm.public.Notification
+      .where((n: any) => n.utilisateur_id.eq(utilisateurId))
+      .where((n: any) => n.lu.eq(false));
+
+    const nonLues = await compterLignes(requete);
 
     if (nonLues > 0) {
       await this.prisma.orm.public.Notification

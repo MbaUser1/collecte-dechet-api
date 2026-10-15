@@ -7,12 +7,17 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import { FiltreAdminUtilisateursDto, StatutUtilisateurEnum } from './dto/filtre-admin-utilisateurs.dto.js';
+import {
+  FiltreAdminUtilisateursDto,
+  StatutUtilisateurEnum,
+} from './dto/filtre-admin-utilisateurs.dto.js';
 import { ChangerStatutUtilisateurDto } from './dto/changer-statut-utilisateur.dto.js';
 import { FiltreAdminDemandesDto } from './dto/filtre-admin-demandes.dto.js';
 import { AffecterCollecteurDto } from './dto/affecter-collecteur.dto.js';
 import { ResultatPagine } from '../../common/dto/pagination-query.dto.js';
 import { serialiserDonnees } from '../../common/utils/serializer.util.js';
+import { compterLignes } from '../../common/utils/compteur.util.js';
+import { Temporal } from 'temporal-polyfill';
 
 @Injectable()
 export class AdminService {
@@ -22,30 +27,97 @@ export class AdminService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  private async compterLignes(requete: any): Promise<number> {
+    return compterLignes(requete);
+  }
   /**
    * Tableau de bord synthétique des opérations administratives.
    */
   async obtenirDashboard(): Promise<any> {
     const rawCounts = await Promise.all([
-      Promise.resolve(this.prisma.orm.public.DemandeCollecte.count()),
-      Promise.resolve(this.prisma.orm.public.DemandeCollecte.where((d) => d.statut.eq('EN_ATTENTE_ATTRIBUTION' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.DemandeCollecte.where((d) => d.statut.eq('ATTRIBUEE' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.DemandeCollecte.where((d) => d.statut.eq('EN_COURS' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.DemandeCollecte.where((d) => d.statut.eq('TERMINEE' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.DemandeCollecte.where((d) => d.statut.eq('ECHOUEE' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.DemandeCollecte.where((d) => d.statut.eq('ANNULEE' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.Utilisateur.where((u) => u.role.eq('PARTICULIER' as any)).where((u) => u.statut.eq('ACTIF' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.Utilisateur.where((u) => u.role.eq('ENTREPRISE' as any)).where((u) => u.statut.eq('ACTIF' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.Utilisateur.where((u) => u.role.eq('COLLECTEUR' as any)).where((u) => u.statut.eq('ACTIF' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.Utilisateur.where((u) => u.statut.eq('SUSPENDU' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.Utilisateur.count()),
-      Promise.resolve(this.prisma.orm.public.Abonnement.where((a) => a.statut.eq('ACTIF' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.Abonnement.count()),
-      Promise.resolve(this.prisma.orm.public.Paiement.where((p) => p.statut.eq('EN_ATTENTE' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.Paiement.where((p) => p.statut.eq('REMBOURSE' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.AjustementPrix.where((a) => a.statut.eq('EN_ATTENTE' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.Facture.where((f) => f.statut.eq('EMISE' as any)).count()),
-      Promise.resolve(this.prisma.orm.public.Facture.where((f) => f.statut.eq('PARTIELLEMENT_PAYEE' as any)).count()),
+      this.compterLignes(this.prisma.orm.public.DemandeCollecte),
+      this.compterLignes(
+        this.prisma.orm.public.DemandeCollecte.where((d) =>
+          d.statut.eq('EN_ATTENTE_ATTRIBUTION' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.DemandeCollecte.where((d) =>
+          d.statut.eq('ATTRIBUEE' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.DemandeCollecte.where((d) =>
+          d.statut.eq('EN_COURS' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.DemandeCollecte.where((d) =>
+          d.statut.eq('TERMINEE' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.DemandeCollecte.where((d) =>
+          d.statut.eq('ECHOUEE' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.DemandeCollecte.where((d) =>
+          d.statut.eq('ANNULEE' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.Utilisateur.where((u) =>
+          u.role.eq('PARTICULIER' as any),
+        ).where((u) => u.statut.eq('ACTIF' as any)),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.Utilisateur.where((u) =>
+          u.role.eq('ENTREPRISE' as any),
+        ).where((u) => u.statut.eq('ACTIF' as any)),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.Utilisateur.where((u) =>
+          u.role.eq('COLLECTEUR' as any),
+        ).where((u) => u.statut.eq('ACTIF' as any)),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.Utilisateur.where((u) =>
+          u.statut.eq('SUSPENDU' as any),
+        ),
+      ),
+      this.compterLignes(this.prisma.orm.public.Utilisateur),
+      this.compterLignes(
+        this.prisma.orm.public.Abonnement.where((a) =>
+          a.statut.eq('ACTIF' as any),
+        ),
+      ),
+      this.compterLignes(this.prisma.orm.public.Abonnement),
+      this.compterLignes(
+        this.prisma.orm.public.Paiement.where((p) =>
+          p.statut.eq('EN_ATTENTE' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.Paiement.where((p) =>
+          p.statut.eq('REMBOURSE' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.AjustementPrix.where((a) =>
+          a.statut.eq('EN_ATTENTE' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.Facture.where((f) =>
+          f.statut.eq('EMISE' as any),
+        ),
+      ),
+      this.compterLignes(
+        this.prisma.orm.public.Facture.where((f) =>
+          f.statut.eq('PARTIELLEMENT_PAYEE' as any),
+        ),
+      ),
     ]);
 
     const [
@@ -104,7 +176,9 @@ export class AdminService {
   /**
    * Liste paginée des utilisateurs pour l'administration.
    */
-  async listerUtilisateurs(filtre: FiltreAdminUtilisateursDto): Promise<ResultatPagine<any>> {
+  async listerUtilisateurs(
+    filtre: FiltreAdminUtilisateursDto,
+  ): Promise<ResultatPagine<any>> {
     const page = filtre.page || 1;
     const limite = filtre.limite || 20;
     const offset = (page - 1) * limite;
@@ -124,7 +198,7 @@ export class AdminService {
         .offset(offset)
         .limit(limite)
         .all(),
-      Promise.resolve(requete.count()),
+      this.compterLignes(requete),
     ]);
 
     const total = Number(totalCount);
@@ -150,9 +224,9 @@ export class AdminService {
    * Détail d'un utilisateur par ID.
    */
   async obtenirUtilisateur(id: bigint) {
-    const user = await this.prisma.orm.public.Utilisateur
-      .where((u) => u.id.eq(id))
-      .first();
+    const user = await this.prisma.orm.public.Utilisateur.where((u) =>
+      u.id.eq(id),
+    ).first();
 
     if (!user) {
       throw new NotFoundException('Utilisateur introuvable.');
@@ -174,13 +248,15 @@ export class AdminService {
     userAgent?: string,
   ) {
     if (id === adminId && dto.statut === StatutUtilisateurEnum.SUSPENDU) {
-      throw new BadRequestException('Un administrateur ne peut pas suspendre son propre compte.');
+      throw new BadRequestException(
+        'Un administrateur ne peut pas suspendre son propre compte.',
+      );
     }
 
     return this.prisma.transaction(async (tx: any) => {
-      const user = await tx.orm.public.Utilisateur
-        .where((u: any) => u.id.eq(id))
-        .first();
+      const user = await tx.orm.public.Utilisateur.where((u: any) =>
+        u.id.eq(id),
+      ).first();
 
       if (!user) {
         throw new NotFoundException('Utilisateur introuvable.');
@@ -188,24 +264,26 @@ export class AdminService {
 
       const ancienStatut = user.statut;
 
-      const utilisateurMaj = await tx.orm.public.Utilisateur
-        .where((u: any) => u.id.eq(id))
-        .update({
-          statut: dto.statut as any,
-          date_modification: new Date() as any,
-        });
+      const utilisateurMaj = await tx.orm.public.Utilisateur.where((u: any) =>
+        u.id.eq(id),
+      ).update({
+        statut: dto.statut as any,
+        date_modification: Temporal.Now.instant(),
+      });
 
       // Si suspension : révocation immédiate de toutes les sessions actives
       if (dto.statut === StatutUtilisateurEnum.SUSPENDU) {
-        await tx.orm.public.SessionUtilisateur
-          .where((s: any) => s.utilisateur_id.eq(id))
-          .update({ revoque: true } as any);
+        await tx.orm.public.SessionUtilisateur.where((s: any) =>
+          s.utilisateur_id.eq(id),
+        ).update({ revoque: true } as any);
       }
 
       // Enregistrement d'audit
       await this.auditService.enregistrerAction(
         adminId,
-        dto.statut === StatutUtilisateurEnum.SUSPENDU ? 'SUSPENSION_COMPTE' : 'CHANGEMENT_STATUT_COMPTE',
+        dto.statut === StatutUtilisateurEnum.SUSPENDU
+          ? 'SUSPENSION_COMPTE'
+          : 'CHANGEMENT_STATUT_COMPTE',
         'Utilisateur',
         id,
         {
@@ -237,7 +315,9 @@ export class AdminService {
   /**
    * Consultation paginée des demandes de collecte pour l'administration.
    */
-  async listerDemandes(filtre: FiltreAdminDemandesDto): Promise<ResultatPagine<any>> {
+  async listerDemandes(
+    filtre: FiltreAdminDemandesDto,
+  ): Promise<ResultatPagine<any>> {
     const page = filtre.page || 1;
     const limite = filtre.limite || 20;
     const offset = (page - 1) * limite;
@@ -248,16 +328,24 @@ export class AdminService {
       requete = requete.where((d) => d.statut.eq(filtre.statut as any)) as any;
     }
     if (filtre.zone_id) {
-      requete = requete.where((d) => d.zone_id.eq(BigInt(filtre.zone_id!))) as any;
+      requete = requete.where((d) =>
+        d.zone_id.eq(BigInt(filtre.zone_id!)),
+      ) as any;
     }
     if (filtre.type_dechet_id) {
-      requete = requete.where((d) => d.type_dechet_id.eq(BigInt(filtre.type_dechet_id!))) as any;
+      requete = requete.where((d) =>
+        d.type_dechet_id.eq(BigInt(filtre.type_dechet_id!)),
+      ) as any;
     }
     if (filtre.client_id) {
-      requete = requete.where((d) => d.utilisateur_id.eq(BigInt(filtre.client_id!))) as any;
+      requete = requete.where((d) =>
+        d.utilisateur_id.eq(BigInt(filtre.client_id!)),
+      ) as any;
     }
     if (filtre.collecteur_id) {
-      requete = requete.where((d) => d.collecteur_id.eq(BigInt(filtre.collecteur_id!))) as any;
+      requete = requete.where((d) =>
+        d.collecteur_id.eq(BigInt(filtre.collecteur_id!)),
+      ) as any;
     }
 
     const [elements, totalCount] = await Promise.all([
@@ -266,7 +354,7 @@ export class AdminService {
         .offset(offset)
         .limit(limite)
         .all(),
-      Promise.resolve(requete.count()),
+      this.compterLignes(requete),
     ]);
 
     const total = Number(totalCount);
@@ -286,33 +374,33 @@ export class AdminService {
    * Détail complet d'une demande avec historique opérationnel.
    */
   async obtenirDemande(id: bigint) {
-    const demande = await this.prisma.orm.public.DemandeCollecte
-      .where((d) => d.id.eq(id))
-      .first();
+    const demande = await this.prisma.orm.public.DemandeCollecte.where((d) =>
+      d.id.eq(id),
+    ).first();
 
     if (!demande) {
       throw new NotFoundException('Demande de collecte introuvable.');
     }
 
     const [mission, paiements, ajustements] = await Promise.all([
-      this.prisma.orm.public.MissionCollecte
-        .where((m) => m.demande_collecte_id.eq(id))
-        .first(),
-      this.prisma.orm.public.Paiement
-        .where((p) => p.demande_collecte_id.eq(id))
+      this.prisma.orm.public.MissionCollecte.where((m) =>
+        m.demande_collecte_id.eq(id),
+      ).first(),
+      this.prisma.orm.public.Paiement.where((p) => p.demande_collecte_id.eq(id))
         .orderBy((p: any) => p.date_creation.desc())
         .all(),
-      this.prisma.orm.public.AjustementPrix
-        .where((a) => a.demande_collecte_id.eq(id))
+      this.prisma.orm.public.AjustementPrix.where((a) =>
+        a.demande_collecte_id.eq(id),
+      )
         .orderBy((a: any) => a.date_creation.desc())
         .all(),
     ]);
 
     let elementsCollectes: any[] = [];
     if (mission) {
-      elementsCollectes = await this.prisma.orm.public.ElementCollecte
-        .where((e) => e.mission_collecte_id.eq(mission.id))
-        .all();
+      elementsCollectes = await this.prisma.orm.public.ElementCollecte.where(
+        (e) => e.mission_collecte_id.eq(mission.id),
+      ).all();
     }
 
     return {
@@ -341,11 +429,15 @@ export class AdminService {
     const collecteurId = BigInt(dto.collecteur_id);
 
     // 1. Vérification du collecteur cible
-    const collecteur = await this.prisma.orm.public.Utilisateur
-      .where((u) => u.id.eq(collecteurId))
-      .first();
+    const collecteur = await this.prisma.orm.public.Utilisateur.where((u) =>
+      u.id.eq(collecteurId),
+    ).first();
 
-    if (!collecteur || collecteur.role !== 'COLLECTEUR' || collecteur.statut !== 'ACTIF') {
+    if (
+      !collecteur ||
+      collecteur.role !== 'COLLECTEUR' ||
+      collecteur.statut !== 'ACTIF'
+    ) {
       throw new BadRequestException(
         "Le collecteur spécifié n'existe pas, ne possède pas le rôle COLLECTEUR ou n'est pas actif.",
       );
@@ -353,46 +445,51 @@ export class AdminService {
 
     return this.prisma.transaction(async (tx: any) => {
       // 2. Vérification de la demande
-      const demande = await tx.orm.public.DemandeCollecte
-        .where((d: any) => d.id.eq(demandeId))
-        .first();
+      const demande = await tx.orm.public.DemandeCollecte.where((d: any) =>
+        d.id.eq(demandeId),
+      ).first();
 
       if (!demande) {
         throw new NotFoundException('Demande de collecte introuvable.');
       }
 
-      if (demande.statut !== 'EN_ATTENTE_ATTRIBUTION' || demande.collecteur_id !== null) {
+      if (
+        demande.statut !== 'EN_ATTENTE_ATTRIBUTION' ||
+        demande.collecteur_id !== null
+      ) {
         throw new ConflictException({
           statusCode: 409,
           code: 'COLLECTE_DEJA_ATTRIBUEE',
-          message: "Cette collecte a déjà été acceptée ou n'est plus disponible pour affectation.",
+          message:
+            "Cette collecte a déjà été acceptée ou n'est plus disponible pour affectation.",
         });
       }
 
       // 3. Vérification de non-existence de mission
-      const missionExistante = await tx.orm.public.MissionCollecte
-        .where((m: any) => m.demande_collecte_id.eq(demandeId))
-        .first();
+      const missionExistante = await tx.orm.public.MissionCollecte.where(
+        (m: any) => m.demande_collecte_id.eq(demandeId),
+      ).first();
 
       if (missionExistante) {
         throw new ConflictException({
           statusCode: 409,
           code: 'COLLECTE_DEJA_ATTRIBUEE',
-          message: 'Une mission a déjà été créée pour cette demande de collecte.',
+          message:
+            'Une mission a déjà été créée pour cette demande de collecte.',
         });
       }
 
       const maintenant = new Date();
 
       // 4. Mise à jour de la demande
-      const demandeMaj = await tx.orm.public.DemandeCollecte
-        .where((d: any) => d.id.eq(demandeId))
-        .update({
-          collecteur_id: collecteurId as any,
-          statut: 'ATTRIBUEE' as any,
-          date_attribution: maintenant as any,
-          date_modification: maintenant as any,
-        });
+      const demandeMaj = await tx.orm.public.DemandeCollecte.where((d: any) =>
+        d.id.eq(demandeId),
+      ).update({
+        collecteur_id: collecteurId as any,
+        statut: 'ATTRIBUEE' as any,
+        date_attribution: maintenant as any,
+        date_modification: maintenant as any,
+      });
 
       // 5. Création de la mission opérationnelle
       const mission = await tx.orm.public.MissionCollecte.create({
@@ -424,7 +521,10 @@ export class AdminService {
         'Nouvelle mission affectée',
         `Une demande de collecte (#${demande.numero}) vous a été affectée par l'administration.`,
         'MISSION',
-        { demande_id: demandeId.toString(), mission_id: mission.id?.toString() },
+        {
+          demande_id: demandeId.toString(),
+          mission_id: mission.id?.toString(),
+        },
         tx,
       );
 

@@ -14,6 +14,7 @@ import {
   ResultatPagine,
   validerChampTri,
 } from '../../common/dto/pagination-query.dto.js';
+import { compterLignes } from '../../common/utils/compteur.util.js';
 
 @Injectable()
 export class CatalogueService {
@@ -36,7 +37,7 @@ export class CatalogueService {
       query = query.where((c: any) => c.nom.ilike(recherchePattern));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,
@@ -185,7 +186,7 @@ export class CatalogueService {
       query = query.where((t: any) => t.nom.ilike(recherchePattern));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,

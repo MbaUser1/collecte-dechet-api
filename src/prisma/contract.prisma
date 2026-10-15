@@ -206,13 +206,13 @@ model Portefeuille {
   utilisateur       Utilisateur?              @relation(
     fields: [utilisateur_id],
     references: [id],
-    onDelete: Cascade
+    onDelete: Restrict
   )
 
   entreprise        Entreprise?               @relation(
     fields: [entreprise_id],
     references: [id],
-    onDelete: Cascade
+    onDelete: Restrict
   )
 
   transactions      TransactionPortefeuille[]

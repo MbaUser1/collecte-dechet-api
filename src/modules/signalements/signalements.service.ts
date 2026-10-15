@@ -17,6 +17,7 @@ import {
   ResultatPagine,
   validerChampTri,
 } from '../../common/dto/pagination-query.dto.js';
+import { compterLignes } from '../../common/utils/compteur.util.js';
 
 @Injectable()
 export class SignalementsService {
@@ -74,7 +75,7 @@ export class SignalementsService {
       query = query.where((s: any) => s.ville.ilike(`%${filtre.ville}%`));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,
@@ -144,7 +145,7 @@ export class SignalementsService {
       query = query.where((s: any) => s.ville.ilike(`%${filtre.ville}%`));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,
@@ -356,7 +357,7 @@ export class SignalementsService {
       query = query.where((s: any) => s.ville.ilike(`%${filtre.ville}%`));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,
@@ -524,7 +525,7 @@ export class SignalementsService {
       query = query.where((p: any) => p.statut.eq(filtre.statut));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,

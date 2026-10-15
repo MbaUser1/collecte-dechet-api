@@ -170,18 +170,47 @@ Tous les endpoints métier sont préfixés par `/api/v1` :
 
 ## 6. Fournisseurs de Paiement et Statut
 
-1. **`FOURNISSEUR_DEMO`** :
-   - Fournisseur de simulation pour les environnements de développement et de test.
-   - **Protection de production** : Le fournisseur lève une exception `ForbiddenException` immédiate dès que `NODE_ENV === 'production'`. Il ne peut pas être déclenché accidentellement en environnement réel.
+1. **`FOURNISSEUR_DEMO` (Actif par défaut)** :
+   - Fournisseur de simulation pour les environnements de développement et de test local.
+   - **Protection absolue de production** : Le fournisseur lève une exception `ForbiddenException` immédiate dès que `NODE_ENV === 'production'`. Aucun flux d'argent réel ne peut transiter par ce mock.
 2. **Fournisseurs réels (MTN Mobile Money, Orange Money, Stripe)** :
    - L'interface [`IFournisseurPaiement`](file:///e:/projets-next/collecte-dechets-api/src/modules/paiements/fournisseurs/fournisseur-paiement.interface.ts) définit le contrat attendu (`initierPaiement`, `verifierSignatureWebhook`, `analyserNotification`).
-   - L'intégration de chaque opérateur réel exigera la configuration de leurs identifiants marchands et clés de webhook dans les variables d'environnement.
+   - **Statut actuel** : Aucun compte marchand ni clé de passerelle réelle n'est actuellement configuré. L'intégration de chaque opérateur réel exigera la configuration de leurs identifiants marchands sécurisés et secrets de webhook dans les variables d'environnement de production.
 
 ---
 
-## 7. Limitations Connues et Prérequis SQL
+## 7. Schéma SQL, Migrations et Limitations
 
-### A. Limites Fonctionnelles Actuelles
+### A. Schéma Supabase Distant vs Migrations SQL Préparées
+- **État actuel de la base Supabase distante** : La base distante consultée ne contient actuellement que **4 tables applicatives** (`entreprises`, `points_collecte`, `portefeuilles`, `utilisateurs`).
+- **Scripts de migration préparés (01 à 07)** :
+  Sept scripts SQL locaux et idempotents ont été conçus dans `src/prisma/migrations/` pour amener la base de données aux **30 tables complètes** prévues par le contrat Prisma 8 :
+  1. `01_align_existing_tables.sql` : Alignement des 4 tables existantes, sécurisation des types (`bigint`), ajout de la contrainte CHECK anti-découvert `solde >= 0`, et clé étrangère `ON DELETE RESTRICT`.
+  2. `02_deploy_level0_tables.sql` : Déploiement des tables socles de niveau 0 sans dépendance externe (catalogue, rôles, statuts).
+  3. `03_deploy_level1_tables.sql` : Déploiement des tables de niveau 1 (tarifs, plans d'abonnement, etc.).
+  4. `04_deploy_level2_tables.sql` : Déploiement des tables de niveau 2 (demandes de collecte, abonnements, etc.).
+  5. `05_deploy_level3_tables.sql` : Déploiement des tables de niveau 3 (missions, paiements, factures, participations communautaires, etc.).
+  6. `06_deploy_level4_tables.sql` : Déploiement des tables de niveau 4 (ajustements financiers, audit logs, etc.).
+  7. `07_verification_and_indexes.sql` : **Script de contrôle strictement en lecture seule** inspectant la présence des 30 tables, des 22 contraintes CHECK critiques et des index partiels.
+- **Règle absolue** : **AUCUNE MIGRATION DIRECTE SUR LA BASE SUPABASE DE PRODUCTION**. Le schéma doit d'abord être validé sur un environnement de staging dédié (clone Supabase ou instance PostgreSQL isolée).
+
+### B. Tests de Concurrence Réels PostgreSQL (`DATABASE_TEST_URL`)
+- Le fichier [`test/concurrence-postgresql.e2e-spec.ts`](file:///e:/projets-next/collecte-dechets-api/test/concurrence-postgresql.e2e-spec.ts) implémente **9 scénarios réels de concurrence multi-connexions** via `pg.Client` natif (sans mocks) :
+  1. Double requête concurrente avec la même clé d'idempotence.
+  2. Deux débits concurrents dépassant le solde d'un portefeuille (intégrité CHECK `solde >= 0`).
+  3. Débits concurrents compatibles avec le solde.
+  4. Deux requêtes concurrentes consommant le quota restant d'un abonnement.
+  5. Deux collecteurs acceptant la même demande de collecte simultanément.
+  6. Double notification concurrente d'un webhook de paiement.
+  7. Règlements partiels concurrents sur une facture d'entreprise.
+  8. Annulation de collecte concurrente à la consommation de quota.
+  9. Remboursements partiels concurrents sur un paiement.
+- **Garde-fous d'infrastructure** :
+  - Le banc de test inspecte l'URL de connexion et **refuse formellement** de s'exécuter sur un hôte cloud/Supabase ou sur une base dont le nom n'évoque pas explicitement un environnement de test (`test`, `ci`, `temp`).
+  - Définir `DATABASE_TEST_URL="postgresql://postgres:postgres@localhost:5432/collecte_test"` pour exécuter ces tests sur une instance PostgreSQL locale.
+  - En l'absence d'instance de test dédiée, les tests sont explicitement **sautés (`skipped`)** sans faux positifs.
+
+### C. Limites Fonctionnelles Actuelles
 - **Invalidation immédiate des Access Tokens JWT** :
   - La suspension d'un compte bloque instantanément les requêtes grâce au contrôle de statut en base effectué dans `JwtAuthGuard`.
   - La révocation unitaire d'une seule session par un utilisateur sans suspension du compte laisse l'access token actif jusqu'à expiration (≤ 15 minutes) car le token est apatride (stateless). L'intégration d'une liste noire distribuée (Redis ou table `jetons_revoques`) sera nécessaire pour une invalidation instantanée d'un jeton spécifique.
@@ -189,21 +218,30 @@ Tous les endpoints métier sont préfixés par `/api/v1` :
   - Les notifications in-app sont persistées en base (`Notification`).
   - L'envoi vers les terminaux distants (Twilio / Firebase Cloud Messaging) requiert une file de traitement persistante (ex. BullMQ / Redis) pour garantir la livraison sans impacter le temps de réponse HTTP.
 - **Participations aux Chantiers Communautaires** :
-  - Les chantiers sont modélisés par `SignalementDechet.est_collecte_communautaire`. L'attribution des points est tracée dans `TransactionPoints`.
-  - Il n'existe pas de table dédiée `participations_chantiers` permettant d'inscrire des bénévoles préalablement à l'événement.
-
-### B. Prérequis SQL pour Évolutions Futures
-Pour des charges transactionnelles très élevées avec concurrence extrême, les contraintes et index suivants devront être ajoutés dans une future migration DDL planifiée :
-1. `CREATE UNIQUE INDEX IF NOT EXISTS idx_demande_mission_unique ON missions_collecte (demande_collecte_id);`
-2. `ALTER TABLE portefeuilles ADD CONSTRAINT portefeuilles_solde_non_negatif CHECK (solde >= 0);`
-3. Verrouillage pessimiste (`SELECT ... FOR UPDATE`) sur les lignes `portefeuilles` lors des débits à forte concurrence.
+  - La table `participations_collectes_communautaires` est entièrement modélisée dans le contrat Prisma 8 et prévue dans le script `05_deploy_level3_tables.sql`.
+  - Le service applicatif [`SignalementsService`](file:///e:/projets-next/collecte-dechets-api/src/modules/signalements/signalements.service.ts) implémente la persistance des participants (`rejoindreCollecteCommunautaire`, vérification de la capacité maximale et unicité).
+  - La persistance en base sera effective dès que la migration 05 sera déployée sur l'infrastructure cible.
 
 ---
 
-## 8. Procédure de Déploiement
+## 8. Procédure de Déploiement et Validation Staging
 
-1. Configurer les variables d'environnement de production sur l'hébergeur (`NODE_ENV=production`, clés JWT aléatoires ≥ 64 caractères, `DATABASE_URL`).
-2. Exécuter le build : `npm run build`.
-3. Vérifier l'intégrité : `npm run test` et `npm run lint`.
-4. Démarrer le service avec un gestionnaire de processus (ex. PM2 ou conteneur Docker) : `node dist/main.js`.
-5. Configurer un reverse proxy (Nginx, Cloudflare) avec terminaison SSL, compression Gzip, et limitation de débit (rate limiting) sur `/api/v1/auth/*` et `/api/v1/paiements/*`.
+1. **Validation locale de l'application** :
+   ```bash
+   npm run lint
+   npm test
+   npm run build
+   ```
+2. **Préparation d'un environnement de staging isolé** :
+   - Créer une instance PostgreSQL ou un projet Supabase de staging dédié.
+   - Ne jamais exécuter de DDL sur l'instance de production directement.
+3. **Application ordonnancée des migrations SQL** :
+   - Appliquer successivement les scripts `01_align_existing_tables.sql` à `06_deploy_level4_tables.sql` via `psql` ou l'éditeur SQL de staging.
+4. **Vérification automatique de conformité** :
+   - Exécuter le script `07_verification_and_indexes.sql` en lecture seule et vérifier que les 30 tables, les 22 contraintes CHECK et les prédicats d'index retournent un statut `CONFORME`.
+5. **Validation des tests de bout en bout** :
+   - Configurer `DATABASE_TEST_URL` pointant vers la base de staging et lancer `npm run test:e2e`.
+6. **Mise en production sécurisée** :
+   - Configurer les variables d'environnement (`NODE_ENV=production`, secrets JWT cryptographiquement forts, `DATABASE_URL`).
+   - Démarrer le service avec un gestionnaire de processus (PM2 / conteneur Docker) : `node dist/main.js`.
+   - Placer l'API derrière un reverse proxy avec SSL, compression et rate limiting.

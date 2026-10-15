@@ -12,6 +12,7 @@ import {
   ResultatPagine,
   validerChampTri,
 } from '../../common/dto/pagination-query.dto.js';
+import { compterLignes } from '../../common/utils/compteur.util.js';
 
 function genererReferenceTransaction(prefix: string): string {
   const ts = Date.now().toString(36).toUpperCase();
@@ -267,7 +268,7 @@ export class PortefeuilleService {
       query = query.where((t: any) => t.sens.eq(filtre.sens));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,

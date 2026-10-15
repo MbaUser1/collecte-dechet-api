@@ -167,6 +167,30 @@ describe('PRIORITÉS 1, 2 ET 3 — SÉCURITÉ FINANCIÈRE ET PERSISTANCE COMMUNA
       await expect(
         service.creerAjustementCreditEtRembourser(10n, 600, 'Remboursement partiel 2 (retry)', 100n),
       ).rejects.toThrow(BadRequestException);
+
+      // En revanche, une demande séquentielle de 400 FCFA (le solde restant) est acceptée et clôture le paiement
+      mockPrisma.orm.public.Paiement.first.mockResolvedValueOnce({
+        id: 100n,
+        montant: '1000',
+        statut: 'REMBOURSE_PARTIELLEMENT',
+        date_modification: new Date('2026-10-10T10:00:01Z'),
+      });
+      mockPrisma.orm.public.AjustementPrix.all.mockResolvedValueOnce([
+        { id: 1n, montant: '600', sens: 'CREDIT', statut: 'REGLE' },
+      ]);
+      mockPrisma.orm.public.Paiement.update.mockResolvedValueOnce({
+        id: 100n,
+        montant: '1000',
+        statut: 'REMBOURSE',
+        date_modification: new Date('2026-10-10T10:00:02Z'),
+      });
+
+      const res400 = await service.creerAjustementCreditEtRembourser(10n, 400, 'Remboursement solde', 100n);
+      expect(res400.statut).toBe('REGLE');
+      expect(mockPortefeuilleService.crediter).toHaveBeenCalledTimes(2);
+      expect(mockPrisma.orm.public.Paiement.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ statut: 'REMBOURSE' }),
+      );
     });
   });
 

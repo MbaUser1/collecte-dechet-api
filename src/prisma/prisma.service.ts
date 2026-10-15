@@ -1,3 +1,6 @@
+
+import 'temporal-polyfill/full/global';
+
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import postgres from '@prisma/orm-postgres/runtime';

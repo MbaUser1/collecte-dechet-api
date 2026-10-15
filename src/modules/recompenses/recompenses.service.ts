@@ -16,6 +16,7 @@ import {
   ResultatPagine,
   validerChampTri,
 } from '../../common/dto/pagination-query.dto.js';
+import { compterLignes } from '../../common/utils/compteur.util.js';
 
 @Injectable()
 export class RecompensesService {
@@ -45,7 +46,7 @@ export class RecompensesService {
       query = query.where((t: any) => t.sens.eq(filtre.sens));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,
@@ -91,7 +92,7 @@ export class RecompensesService {
       query = query.where((r: any) => r.partenaire_id.eq(BigInt(filtre.partenaire_id!)));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,
@@ -244,7 +245,7 @@ export class RecompensesService {
       query = query.where((r: any) => r.statut.eq(filtre.statut));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,

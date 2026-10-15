@@ -11,6 +11,7 @@ import {
   ResultatPagine,
   validerChampTri,
 } from '../../../common/dto/pagination-query.dto.js';
+import { compterLignes } from '../../../common/utils/compteur.util.js';
 
 @Injectable()
 export class ZonesService {
@@ -33,7 +34,7 @@ export class ZonesService {
       query = query.where((z: any) => z.nom.ilike(recherchePattern));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,

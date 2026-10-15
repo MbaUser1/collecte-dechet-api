@@ -17,6 +17,7 @@ import {
   ResultatPagine,
   validerChampTri,
 } from '../../common/dto/pagination-query.dto.js';
+import { compterLignes } from '../../common/utils/compteur.util.js';
 import { AjustementsService } from '../ajustements/ajustements.service.js';
 
 @Injectable()
@@ -246,7 +247,7 @@ export class DemandesCollecteService {
       query = query.where((d: any) => d.statut.eq(filtre.statut));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,

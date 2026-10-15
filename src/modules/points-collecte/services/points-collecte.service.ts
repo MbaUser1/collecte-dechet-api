@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service.js';
 import { CreerPointCollecteDto } from '../dto/creer-point-collecte.dto.js';
 import { ModifierPointCollecteDto } from '../dto/modifier-point-collecte.dto.js';
+import { compterLignes } from '../../../common/utils/compteur.util.js';
 
 @Injectable()
 export class PointsCollecteService {
@@ -181,9 +182,9 @@ export class PointsCollecteService {
     await this.obtenirPointParId(id, utilisateur);
 
     // Vérifier si des demandes historiques sont rattachées à ce point
-    const nbDemandes = await this.prisma.orm.public.DemandeCollecte
-      .where((d: any) => d.point_collecte_id.eq(id))
-      .count();
+    const queryDemandes = this.prisma.orm.public.DemandeCollecte
+      .where((d: any) => d.point_collecte_id.eq(id));
+    const nbDemandes = await compterLignes(queryDemandes);
 
     if (Number(nbDemandes) > 0) {
       // Préservation impérative de l'historique : désactivation logique uniquement

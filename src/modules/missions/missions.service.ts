@@ -19,6 +19,7 @@ import {
   ResultatPagine,
   validerChampTri,
 } from '../../common/dto/pagination-query.dto.js';
+import { compterLignes } from '../../common/utils/compteur.util.js';
 
 @Injectable()
 export class MissionsService {
@@ -49,7 +50,7 @@ export class MissionsService {
       query = query.where((d: any) => d.type_dechet_id.eq(BigInt(filtre.type_dechet_id!)));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,
@@ -205,7 +206,7 @@ export class MissionsService {
       query = query.where((m: any) => m.statut.eq(filtre.statut));
     }
 
-    const total = await query.count();
+    const total = await compterLignes(query);
 
     const champTri = validerChampTri(
       filtre.trier_par,
